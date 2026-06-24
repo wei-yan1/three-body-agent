@@ -44,6 +44,23 @@
 - 前端交互系统：提供登录页、角色选择页和多角色聊天页，支持罗辑、章北海、叶文洁、王淼等角色的网页化体验。
 - 静态资源服务：FastAPI 同时提供 API 和前端页面，便于单服务部署。
 
+
+## 技术栈
+
+- 后端框架：FastAPI、Uvicorn
+- Agent 框架：LangChain Agent、Agent Middleware、create_agent
+- 大模型接口：OpenAI Compatible API、DashScope/Qwen 系列模型、GLM Router Model
+- 多模型语义链路：Intent Router、Query Rewrite、Chat Generation、Embedding、Rerank
+- 人物建模：女娲式 Persona Skill 蒸馏、Temporal Persona Profile、反人设漂移规则
+- 数据处理：Structure-aware Chunking、章节级切分、人物 Skill 语义切分、JSONL 可审计中间产物
+- 检索增强：Chroma、LangChain Chroma、BM25、Hybrid Fusion、DashScope Rerank、时间线过滤
+- 联网搜索：Tavily
+- 数据存储：MySQL、Redis、Chroma 本地向量索引
+- 前端：HTML、CSS、JavaScript 静态页面
+- 依赖管理：uv
+
+
+
 ## 专业技术方案
 
 ### 女娲式人物 Skill 蒸馏
@@ -165,19 +182,6 @@
 
 同时，记忆不能无限增长。项目实现了基于重要性和容量的遗忘机制，将低保留价值的情景记忆清理掉，降低长期运行时的存储压力和上下文噪声。
 
-## 技术栈
-
-- 后端框架：FastAPI、Uvicorn
-- Agent 框架：LangChain Agent、Agent Middleware、create_agent
-- 大模型接口：OpenAI Compatible API、DashScope/Qwen 系列模型、GLM Router Model
-- 多模型语义链路：Intent Router、Query Rewrite、Chat Generation、Embedding、Rerank
-- 人物建模：女娲式 Persona Skill 蒸馏、Temporal Persona Profile、反人设漂移规则
-- 数据处理：Structure-aware Chunking、章节级切分、人物 Skill 语义切分、JSONL 可审计中间产物
-- 检索增强：Chroma、LangChain Chroma、BM25、Hybrid Fusion、DashScope Rerank、时间线过滤
-- 联网搜索：Tavily
-- 数据存储：MySQL、Redis、Chroma 本地向量索引
-- 前端：HTML、CSS、JavaScript 静态页面
-- 依赖管理：uv
 
 ## 目录结构
 
