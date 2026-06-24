@@ -1,0 +1,130 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: #030303;
+  color: #fff;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.agents-page {
+  min-height: 100vh;
+  padding: 0;
+  background: #030303;
+}
+
+.logout-button {
+  position: fixed;
+  top: 26px;
+  right: 34px;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.78);
+  cursor: pointer;
+  font-size: 14px;
+  letter-spacing: 0;
+}
+
+.logout-button:hover {
+  color: #fff;
+}
+
+.agents-stack {
+  display: grid;
+  gap: 0;
+  width: 100%;
+}
+
+.agent-card {
+  position: relative;
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  color: #fff;
+  text-decoration: none;
+  background: #050505;
+}
+
+.agent-card.hero {
+  min-height: 58vh;
+}
+
+.agent-card.secondary {
+  min-height: 52vh;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.agent-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0.04) 48%, rgba(0, 0, 0, 0.24)),
+    linear-gradient(0deg, rgba(0, 0, 0, 0.12), transparent 52%);
+  pointer-events: none;
+}
+
+.agent-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: inherit;
+  object-fit: cover;
+  filter: none;
+  transition: transform 260ms ease, filter 260ms ease;
+}
+
+.agent-card[href]:hover .agent-image {
+  transform: scale(1.018);
+}
+
+.agent-card h1,
+.agent-card h2 {
+  position: absolute;
+  z-index: 1;
+  left: clamp(28px, 5vw, 72px);
+  top: clamp(28px, 5vw, 72px);
+  margin: 0;
+  color: #fff;
+  font-size: clamp(48px, 8vw, 118px);
+  line-height: 0.92;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.agent-card h2 {
+  font-size: clamp(44px, 7vw, 104px);
+}
+
+.agent-card.is-disabled {
+  cursor: default;
+}
+
+.agent-card.is-disabled .agent-image {
+  filter: none;
+}
+
+@media (max-width: 760px) {
+  .agents-page {
+    padding: 0;
+  }
+
+  .logout-button {
+    top: 18px;
+    right: 18px;
+  }
+
+  .agent-card.hero,
+  .agent-card.secondary {
+    min-height: 50vh;
+  }
+
+  .agent-card h1,
+  .agent-card h2 {
+    top: 64px;
+  }
+}

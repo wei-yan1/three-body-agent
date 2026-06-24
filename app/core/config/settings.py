@@ -1,0 +1,32 @@
+"""Project-level runtime settings."""
+
+from __future__ import annotations
+
+import os
+
+
+TEST_CHAT_MODEL = os.getenv("TEST_CHAT_MODEL", "qwen3.7-plus")
+PROD_CHAT_MODEL = os.getenv("PROD_CHAT_MODEL", "qwen3.7-max")
+DEFAULT_CHAT_MODEL = os.getenv("DEFAULT_CHAT_MODEL", TEST_CHAT_MODEL)
+DEFAULT_REWRITE_MODEL = os.getenv("REWRITE_CHAT_MODEL", TEST_CHAT_MODEL)
+DEFAULT_ROUTER_MODEL = os.getenv("ROUTER_MODEL", "glm-5")
+DEFAULT_ROUTER_BASE_URL = os.getenv(
+    "ROUTER_BASE_URL",
+    os.getenv("DASHSCOPE_BASE_URL", ""),
+)
+
+DOCUMENT_EMBEDDING_MODEL = os.getenv(
+    "DASHSCOPE_DOCUMENT_EMBEDDING_MODEL",
+    "text-embedding-v2",
+)
+QUERY_EMBEDDING_MODEL = os.getenv(
+    "DASHSCOPE_QUERY_EMBEDDING_MODEL",
+    "text-embedding-v2",
+)
+EMBEDDING_MODEL = QUERY_EMBEDDING_MODEL
+RERANK_MODEL = os.getenv("DASHSCOPE_RERANK_MODEL", "qwen3-rerank")
+
+EPISODIC_MEMORY_CAPACITY = int(os.getenv("EPISODIC_MEMORY_CAPACITY", "40"))
+EPISODIC_FORGET_THRESHOLD = float(os.getenv("EPISODIC_FORGET_THRESHOLD", "0.4"))
+EPISODIC_RECALL_BOOST = float(os.getenv("EPISODIC_RECALL_BOOST", "0.05"))
+EPISODIC_MAX_IMPORTANCE = float(os.getenv("EPISODIC_MAX_IMPORTANCE", "0.95"))

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Log in</title>
+    <link rel="stylesheet" href="/static/login.css?v=music-1" />
+    <link rel="stylesheet" href="/static/global-music.css?v=music-1" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <img class="login-art" src="/assets/login-background" alt="" />
+      <section class="login-panel" aria-label="login form">
+        <button id="mode-toggle" class="mode-button" type="button">log in</button>
+        <form id="auth-form" class="auth-card">
+          <label>
+            <span>username</span>
+            <input id="username" name="username" autocomplete="username" required />
+          </label>
+          <label>
+            <span>password</span>
+            <input id="password" name="password" type="password" autocomplete="current-password" required />
+          </label>
+          <button id="submit-button" class="submit-button" type="submit">enter</button>
+          <button id="switch-mode" class="switch-button" type="button">create account</button>
+          <p id="message" class="message" role="status"></p>
+        </form>
+      </section>
+    </main>
+    <script src="/static/global-music.js?v=music-1"></script>
+    <script src="/static/login.js?v=music-1"></script>
+  </body>
+</html>

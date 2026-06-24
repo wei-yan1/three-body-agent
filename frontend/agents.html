@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agents</title>
+    <link rel="stylesheet" href="/static/agents.css?v=agents-stack-3" />
+    <link rel="stylesheet" href="/static/global-music.css?v=music-1" />
+  </head>
+  <body>
+    <main class="agents-page">
+      <button id="logout" class="logout-button" type="button">log out</button>
+      <section class="agents-stack" aria-label="角色入口">
+        <a class="agent-card hero" href="/chat/luoji" aria-label="进入罗辑对话">
+          <img class="agent-image" src="/assets/luoji" alt="" />
+          <h1>罗辑</h1>
+        </a>
+        <a class="agent-card secondary" href="/chat/zhangbeihai" aria-label="进入章北海对话">
+          <img class="agent-image" src="/assets/zhangbeihai" alt="" />
+          <h2>章北海</h2>
+        </a>
+      </section>
+    </main>
+    <script src="/static/global-music.js?v=music-1"></script>
+    <script src="/static/agents.js?v=agents-stack-3"></script>
+  </body>
+</html>

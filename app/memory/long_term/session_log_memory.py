@@ -1,0 +1,1 @@
+"""Session log memory placeholder."""

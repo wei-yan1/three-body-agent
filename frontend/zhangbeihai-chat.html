@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>章北海</title>
+    <link rel="stylesheet" href="/static/luoji-chat.css?v=chat-layout-6" />
+    <link rel="stylesheet" href="/static/global-music.css?v=music-1" />
+  </head>
+  <body data-agent="zhangbeihai" data-agent-name="章北海">
+    <main class="chat-page">
+      <aside class="portrait-panel">
+        <a class="back-link" href="/agents">agents</a>
+        <img class="portrait" src="/assets/zhangbeihai-chat" alt="" />
+        <h1>章北海</h1>
+      </aside>
+
+      <section class="chat-panel" aria-label="章北海对话">
+        <header class="chat-header">
+          <div class="field">
+            <label id="timeline-label">时期</label>
+            <div id="stage-picker" class="stage-picker" data-value="T1">
+              <button
+                id="stage-trigger"
+                class="stage-trigger"
+                type="button"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+                data-help="危机初期太空军清醒者阶段：表面服从组织，内心已藏起对未来战争的深层悲观。"
+              >
+                T1 危机初期太空军清醒者
+              </button>
+              <div id="stage-menu" class="stage-menu" role="listbox" aria-labelledby="timeline-label">
+                <button class="stage-option" type="button" role="option" data-value="T1" data-help="危机初期太空军清醒者阶段：表面服从组织，内心已藏起对未来战争的深层悲观。">T1 危机初期太空军清醒者</button>
+                <button class="stage-option" type="button" role="option" data-value="T2" data-help="冬眠前布局与航天路线暗杀阶段：为保留未来选择，把真正意图埋进行动。">T2 冬眠前布局与暗杀阶段</button>
+                <button class="stage-option" type="button" role="option" data-value="T4" data-help="自然选择号逃亡与黑暗战役阶段：把逃亡主义从隐秘信念变成实际行动。">T4 自然选择号逃亡阶段</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="field">
+            <span>模式</span>
+            <div class="mode-group" role="radiogroup" aria-label="知识模式">
+              <label class="tooltip-target" data-help="拟真模式：严格锁定当前 T 阶段知识边界，不联网，不知道未来。">
+                <input type="radio" name="knowledge-mode" value="temporal" checked />
+                拟真
+              </label>
+              <label class="tooltip-target" data-help="通透模式：人格仍锁定当前 T 阶段，但允许联网读取外部资料和未来资料。">
+                <input type="radio" name="knowledge-mode" value="transparent" />
+                通透
+              </label>
+            </div>
+          </div>
+
+          <div class="field thread-field">
+            <label id="thread-label">线程</label>
+            <div id="thread-picker" class="thread-picker" data-value="线程1">
+              <button
+                id="thread-trigger"
+                class="thread-trigger"
+                type="button"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+              >
+                线程1
+              </button>
+              <div id="thread-menu" class="thread-menu" role="listbox" aria-labelledby="thread-label">
+                <div class="thread-menu-head">
+                  <span>点击圆圈选择线程</span>
+                  <span id="thread-selected-count">0 已选</span>
+                </div>
+                <div id="thread-options" class="thread-options"></div>
+                <button id="delete-threads" class="thread-delete-action" type="button" disabled>批量删除选中线程</button>
+                <button id="new-thread" class="thread-action" type="button">新建线程2</button>
+                <button id="custom-thread" class="thread-action" type="button">自定义线程名</button>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <div id="messages" class="messages"></div>
+
+        <form id="chat-form" class="composer">
+          <textarea id="user-message" rows="3" placeholder="输入你想问章北海的话" required></textarea>
+          <button id="send-button" type="submit">send</button>
+        </form>
+      </section>
+    </main>
+    <div id="tooltip" class="tooltip" role="tooltip"></div>
+    <script src="/static/global-music.js?v=music-1"></script>
+    <script src="/static/luoji-chat.js?v=chat-layout-6"></script>
+  </body>
+</html>

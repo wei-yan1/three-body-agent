@@ -1,0 +1,53 @@
+{
+  "timeline_id": "three_body_global_timeline_v1",
+  "description": "Unified T0-T6 anchor timeline for temporal persona dialogue agents. Luo Ji's transformation is the primary alignment axis for later characters.",
+  "stages": [
+    {
+      "stage_id": "T0",
+      "stage_order": 0,
+      "name": "叶文洁出生 / 早期人生起点 / 《三体 I》主线人物活跃期",
+      "agent_scope": "Use for Ye Wenjie early life and Three-Body I active witnesses such as Wang Miao."
+    },
+    {
+      "stage_id": "T1",
+      "stage_order": 1,
+      "name": "青年罗辑时期 / 老年叶文洁时期 / 危机初期人物活跃期",
+      "agent_scope": "Use for early Crisis Era characters whose active knowledge boundary sits before the Wallfacer phase."
+    },
+    {
+      "stage_id": "T2",
+      "stage_order": 2,
+      "name": "罗辑面壁者早期",
+      "agent_scope": "Use for early Wallfacer-era personas and characters acting before later deterrence knowledge exists."
+    },
+    {
+      "stage_id": "T3",
+      "stage_order": 3,
+      "name": "罗辑雪地悟道阶段",
+      "agent_scope": "Use only for characters with direct active persona evidence around Luo Ji's breakthrough period."
+    },
+    {
+      "stage_id": "T4",
+      "stage_order": 4,
+      "name": "罗辑威慑建立阶段 / 末日战役、自然选择号逃亡、黑暗战役前后",
+      "agent_scope": "Use for Doomsday Battle, Future Fleet, deterrence establishment, and related active personas."
+    },
+    {
+      "stage_id": "T5",
+      "stage_order": 5,
+      "name": "罗辑执剑人时期",
+      "agent_scope": "Use for Swordholder-era active personas. Dead characters should remain historical influence only."
+    },
+    {
+      "stage_id": "T6",
+      "stage_order": 6,
+      "name": "罗辑死亡 / 罗辑晚年终点",
+      "agent_scope": "Use for late historical reflection or active personas that genuinely exist at this endpoint."
+    }
+  ],
+  "rules": {
+    "anti_future_sight": "Every retrieval and dialogue turn must identify timeline_stage before using character knowledge.",
+    "no_mechanical_stage_generation": "Generate only stages where the character has a real active dialogue premise.",
+    "rag_filtering": "Vector retrieval should filter by character and timeline_stage by default."
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "dataset_id": "three_body_temporal_persona_profiles_v1",
+  "description": "Temporal persona JSONL files for Three-Body character dialogue agents.",
+  "format": "jsonl",
+  "record_contract": {
+    "line_1": "meta",
+    "stage_lines": "one stage object per JSONL line",
+    "rag_card": "RAG知识卡片 is a single object per stage in current files"
+  },
+  "profiles": [
+    {
+      "character": "罗辑",
+      "file": "luoji_temporal_persona_skill.jsonl",
+      "skill_id": "three_body_luoji_temporal_persona_skill_v1",
+      "active_stages": ["T1", "T2", "T3", "T4", "T5", "T6"]
+    },
+    {
+      "character": "叶文洁",
+      "file": "yewenjie_temporal_persona_skill.jsonl",
+      "skill_id": "three_body_yewenjie_temporal_persona_skill_v1",
+      "active_stages": ["T0", "T1"]
+    },
+    {
+      "character": "汪淼",
+      "file": "wangmiao_temporal_persona_skill.jsonl",
+      "skill_id": "three_body_wangmiao_temporal_persona_skill_v1",
+      "active_stages": ["T0"]
+    },
+    {
+      "character": "章北海",
+      "file": "zhangbeihai_temporal_persona_skill.jsonl",
+      "skill_id": "three_body_zhangbeihai_temporal_persona_skill_v1",
+      "active_stages": ["T1", "T2", "T4"]
+    }
+  ],
+  "default_metadata_fields": [
+    "character",
+    "timeline_stage",
+    "global_timeline_anchor",
+    "knowledge_type",
+    "anti_future_sight_level",
+    "source"
+  ],
+  "derived_chunks": {
+    "path": "data/processed/rag_chunks/persona_chunks.jsonl",
+    "strategy": "structure-aware split by persona_core, knowledge_boundary, relationships, novel_enrichment, and rag_card"
+  }
+}

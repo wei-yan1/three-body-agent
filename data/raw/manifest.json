@@ -1,0 +1,15 @@
+{
+  "dataset_id": "three_body_raw_sources_v1",
+  "description": "Raw source materials used to distill temporal persona profiles and future RAG indexes.",
+  "sources": [
+    {
+      "source_id": "three_body_txt_local",
+      "title": "三体.txt",
+      "path": "data/raw/three_body_characters/three_body.txt",
+      "source_type": "novel_text",
+      "encoding": "utf-8",
+      "imported_from": "C:/Users/MR/Downloads/三体.txt",
+      "usage": ["persona_distillation", "event_distillation", "rag_context"]
+    }
+  ]
+}

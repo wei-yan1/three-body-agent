@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>罗辑</title>
+    <link rel="stylesheet" href="/static/luoji-chat.css?v=chat-layout-6" />
+    <link rel="stylesheet" href="/static/global-music.css?v=music-1" />
+  </head>
+  <body data-agent="luoji" data-agent-name="罗辑">
+    <main class="chat-page">
+      <aside class="portrait-panel">
+        <a class="back-link" href="/agents">agents</a>
+        <img class="portrait" src="/assets/luoji" alt="" />
+        <h1>罗辑</h1>
+      </aside>
+
+      <section class="chat-panel" aria-label="罗辑对话">
+        <header class="chat-header">
+          <div class="field">
+            <label id="timeline-label">时期</label>
+            <div id="stage-picker" class="stage-picker" data-value="T1">
+              <button
+                id="stage-trigger"
+                class="stage-trigger"
+                type="button"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+                data-help="普通学者时期：青年罗辑，尚未承担文明责任。"
+              >
+                T1 青年罗辑
+              </button>
+              <div id="stage-menu" class="stage-menu" role="listbox" aria-labelledby="timeline-label">
+                <button class="stage-option" type="button" role="option" data-value="T1" data-help="普通学者时期：青年罗辑，尚未承担文明责任。">T1 青年罗辑</button>
+                <button class="stage-option" type="button" role="option" data-value="T2" data-help="面壁者早期：被迫成为面壁者，用模糊和逃避保护自己。">T2 面壁者早期</button>
+                <button class="stage-option" type="button" role="option" data-value="T3" data-help="雪地悟道阶段：开始理解黑暗森林的基础逻辑。">T3 雪地悟道</button>
+                <button class="stage-option" type="button" role="option" data-value="T4" data-help="威慑建立阶段：把黑暗森林理论转化为现实威慑。">T4 威慑建立</button>
+                <button class="stage-option" type="button" role="option" data-value="T5" data-help="执剑人时期：作为威慑体系的核心执行者。">T5 执剑人</button>
+                <button class="stage-option" type="button" role="option" data-value="T6" data-help="晚年时期：历史见证者与反思者。">T6 晚年</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="field">
+            <span>模式</span>
+            <div class="mode-group" role="radiogroup" aria-label="知识模式">
+              <label class="tooltip-target" data-help="拟真模式：严格锁定当前 T 阶段知识边界，不联网，不知道未来。">
+                <input type="radio" name="knowledge-mode" value="temporal" checked />
+                拟真
+              </label>
+              <label class="tooltip-target" data-help="通透模式：人格仍锁定当前 T 阶段，但允许联网读取外部资料和未来资料。">
+                <input type="radio" name="knowledge-mode" value="transparent" />
+                通透
+              </label>
+            </div>
+          </div>
+
+          <div class="field thread-field">
+            <label id="thread-label">线程</label>
+            <div id="thread-picker" class="thread-picker" data-value="线程1">
+              <button
+                id="thread-trigger"
+                class="thread-trigger"
+                type="button"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+              >
+                线程1
+              </button>
+              <div id="thread-menu" class="thread-menu" role="listbox" aria-labelledby="thread-label">
+                <div class="thread-menu-head">
+                  <span>点击圆圈选择线程</span>
+                  <span id="thread-selected-count">0 已选</span>
+                </div>
+                <div id="thread-options" class="thread-options"></div>
+                <button id="delete-threads" class="thread-delete-action" type="button" disabled>批量删除选中线程</button>
+                <button id="new-thread" class="thread-action" type="button">新建线程2</button>
+                <button id="custom-thread" class="thread-action" type="button">自定义线程名</button>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <div id="messages" class="messages"></div>
+
+        <form id="chat-form" class="composer">
+          <textarea id="user-message" rows="3" placeholder="输入你想问罗辑的话" required></textarea>
+          <button id="send-button" type="submit">send</button>
+        </form>
+      </section>
+    </main>
+    <div id="tooltip" class="tooltip" role="tooltip"></div>
+    <script src="/static/global-music.js?v=music-1"></script>
+    <script src="/static/luoji-chat.js?v=chat-layout-6"></script>
+  </body>
+</html>
