@@ -50,11 +50,11 @@ body {
 }
 
 .agent-card.hero {
-  min-height: 58vh;
+  min-height: 56vh;
 }
 
 .agent-card.secondary {
-  min-height: 52vh;
+  min-height: 46vh;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 

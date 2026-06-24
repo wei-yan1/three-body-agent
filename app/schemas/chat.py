@@ -11,14 +11,14 @@ KnowledgeMode = Literal["temporal", "transparent"]
 
 
 class LuoJiChatRequest(BaseModel):
-    timeline_stage: Literal["T1", "T2", "T3", "T4", "T5", "T6"]
+    timeline_stage: Literal["T0", "T1", "T2", "T3", "T4", "T5", "T6"]
     knowledge_mode: KnowledgeMode = "temporal"
     thread_name: str = Field(default="线程1", max_length=128)
     message: str = Field(min_length=1, max_length=4000)
 
 
 class LuoJiChatResponse(BaseModel):
-    character: str = "罗辑"
+    character: str
     timeline_stage: str
     knowledge_mode: KnowledgeMode
     thread_id: int

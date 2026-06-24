@@ -19,6 +19,8 @@ LOGIN_BACKGROUND = ASSET_DIR / "login-background.jpg"
 LUOJI_IMAGE = ASSET_DIR / "luoji.jpg"
 ZHANG_BEIHAI_IMAGE = ASSET_DIR / "zbh.jpg"
 ZHANG_BEIHAI_CHAT_IMAGE = ASSET_DIR / "zhang.jpg"
+WANGMIAO_IMAGE = ASSET_DIR / "wangmiao.png"
+YEWENJIE_IMAGE = ASSET_DIR / "yewenjie.jpg"
 GLOBAL_MUSIC = ASSET_DIR / "global-music.mp3"
 
 load_dotenv(PROJECT_ROOT / ".env")
@@ -49,6 +51,16 @@ def zhangbeihai_chat_page() -> FileResponse:
     return FileResponse(PROJECT_ROOT / "frontend/zhangbeihai-chat.html")
 
 
+@app.get("/chat/wangmiao")
+def wangmiao_chat_page() -> FileResponse:
+    return FileResponse(PROJECT_ROOT / "frontend/wangmiao-chat.html")
+
+
+@app.get("/chat/yewenjie")
+def yewenjie_chat_page() -> FileResponse:
+    return FileResponse(PROJECT_ROOT / "frontend/yewenjie-chat.html")
+
+
 @app.get("/assets/login-background")
 def login_background() -> FileResponse:
     if not LOGIN_BACKGROUND.exists():
@@ -75,6 +87,20 @@ def zhangbeihai_chat_image() -> FileResponse:
     if not ZHANG_BEIHAI_CHAT_IMAGE.exists():
         raise HTTPException(status_code=404, detail="Zhang Beihai chat image not found")
     return FileResponse(ZHANG_BEIHAI_CHAT_IMAGE)
+
+
+@app.get("/assets/wangmiao")
+def wangmiao_image() -> FileResponse:
+    if not WANGMIAO_IMAGE.exists():
+        raise HTTPException(status_code=404, detail="Wang Miao image not found")
+    return FileResponse(WANGMIAO_IMAGE)
+
+
+@app.get("/assets/yewenjie")
+def yewenjie_image() -> FileResponse:
+    if not YEWENJIE_IMAGE.exists():
+        raise HTTPException(status_code=404, detail="Ye Wenjie image not found")
+    return FileResponse(YEWENJIE_IMAGE)
 
 
 @app.get("/assets/global-music")

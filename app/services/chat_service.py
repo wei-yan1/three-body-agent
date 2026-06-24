@@ -13,6 +13,8 @@ from langchain.chat_models import init_chat_model
 from app.agents.persona.intent_router import QueryIntentRouter
 from app.agents.persona.luoji_agent import LuoJiAgent
 from app.agents.persona.middleware import TemporalPersonaRAGMiddleware
+from app.agents.persona.wangmiao_agent import WangMiaoAgent
+from app.agents.persona.yewenjie_agent import YeWenjieAgent
 from app.agents.persona.zhangbeihai_agent import ZhangBeihaiAgent
 from app.core.config.settings import (
     DEFAULT_ROUTER_BASE_URL,
@@ -39,6 +41,16 @@ def _luoji_agent_shell() -> LuoJiAgent:
 @lru_cache(maxsize=1)
 def _zhangbeihai_agent_shell() -> ZhangBeihaiAgent:
     return ZhangBeihaiAgent()
+
+
+@lru_cache(maxsize=1)
+def _wangmiao_agent_shell() -> WangMiaoAgent:
+    return WangMiaoAgent()
+
+
+@lru_cache(maxsize=1)
+def _yewenjie_agent_shell() -> YeWenjieAgent:
+    return YeWenjieAgent()
 
 
 def _prepare_openai_compatible_env() -> None:
@@ -100,6 +112,50 @@ def chat_with_zhangbeihai(
     return _chat_with_temporal_persona(
         agent_shell=_zhangbeihai_agent_shell(),
         character="章北海",
+        user=user,
+        thread=thread,
+        timeline_stage=timeline_stage,
+        knowledge_mode=knowledge_mode,
+        message=message,
+        recent_messages=recent_messages,
+    )
+
+
+def chat_with_wangmiao(
+    *,
+    user,
+    thread: dict,
+    timeline_stage: str,
+    knowledge_mode: KnowledgeMode,
+    message: str,
+    recent_messages: list[dict] | None = None,
+) -> str:
+    """Run one Wang Miao Agent response."""
+    return _chat_with_temporal_persona(
+        agent_shell=_wangmiao_agent_shell(),
+        character="汪淼",
+        user=user,
+        thread=thread,
+        timeline_stage=timeline_stage,
+        knowledge_mode=knowledge_mode,
+        message=message,
+        recent_messages=recent_messages,
+    )
+
+
+def chat_with_yewenjie(
+    *,
+    user,
+    thread: dict,
+    timeline_stage: str,
+    knowledge_mode: KnowledgeMode,
+    message: str,
+    recent_messages: list[dict] | None = None,
+) -> str:
+    """Run one Ye Wenjie Agent response."""
+    return _chat_with_temporal_persona(
+        agent_shell=_yewenjie_agent_shell(),
+        character="叶文洁",
         user=user,
         thread=thread,
         timeline_stage=timeline_stage,
