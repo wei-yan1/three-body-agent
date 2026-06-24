@@ -228,23 +228,6 @@ http://127.0.0.1:1314
 uv run python scripts/build_indexes.py
 ```
 
-## 部署说明
-
-当前项目已经将前端静态资源和 Chroma 索引整理为项目内路径，适合部署到单个 Web 服务中。推荐的低成本部署方式是使用 Render Starter 部署 FastAPI 服务，由同一个服务提供前端页面和后端 API。
-
-Render 可使用如下命令：
-
-```bash
-pip install uv && uv sync --frozen
-```
-
-启动命令：
-
-```bash
-uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT
-```
-
-需要在云平台环境变量中配置 `.env.example` 中的模型 Key、MySQL、Redis、JWT 和搜索服务参数。当前项目仍依赖外部 MySQL 和 Redis，如果要进一步降低部署复杂度，可以后续将演示环境改成 SQLite + 本地内存/托管 Redis 的轻量方案。
 
 ## 项目亮点
 
