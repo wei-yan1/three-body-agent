@@ -26,6 +26,9 @@ logs/
 
 data/indexes/*
 !data/indexes/README.md
+!data/indexes/chroma/
+!data/indexes/chroma/**
+!data/indexes/chroma/chroma.sqlite3
 
 models/*
 !models/.gitkeep

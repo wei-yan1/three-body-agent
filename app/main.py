@@ -14,13 +14,12 @@ from app.api.v1.chat import router as chat_router
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-LOGIN_BACKGROUND = Path(
-    r"C:\Users\MR\Desktop\v2-2773615cdf2305e7402655a19c7dcdef_1440w.jpg"
-)
-LUOJI_IMAGE = Path(r"C:\Users\MR\Desktop\luoji.jpg")
-ZHANG_BEIHAI_IMAGE = Path(r"C:\Users\MR\Desktop\zbh.jpg")
-ZHANG_BEIHAI_CHAT_IMAGE = Path(r"C:\Users\MR\Desktop\zhang.jpg")
-GLOBAL_MUSIC = Path(r"D:\Edge software\夜航星（Night Voyager）-蔡明希-不才&三体宇宙.mp3")
+ASSET_DIR = PROJECT_ROOT / "frontend/static/assets"
+LOGIN_BACKGROUND = ASSET_DIR / "login-background.jpg"
+LUOJI_IMAGE = ASSET_DIR / "luoji.jpg"
+ZHANG_BEIHAI_IMAGE = ASSET_DIR / "zbh.jpg"
+ZHANG_BEIHAI_CHAT_IMAGE = ASSET_DIR / "zhang.jpg"
+GLOBAL_MUSIC = ASSET_DIR / "global-music.mp3"
 
 load_dotenv(PROJECT_ROOT / ".env")
 
