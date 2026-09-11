@@ -177,26 +177,6 @@
 同时，记忆不能无限增长。项目实现了基于重要性和容量的遗忘机制，将低保留价值的情景记忆清理掉，降低长期运行时的存储压力和上下文噪声。
 
 
-## 目录结构
-
-```text
-app/
-  agents/          # 角色 Agent、意图路由、Middleware、时间线状态
-  api/             # FastAPI API 路由
-  core/            # 配置、提示词、安全工具
-  memory/          # 工作记忆、情景记忆、长期记忆和遗忘逻辑
-  rag/             # 结构化切分、向量化、混合检索、rerank、联网搜索
-  services/        # 聊天服务和归档服务
-  storage/         # MySQL、Redis 和仓储层
-data/
-  raw/             # 原始小说与人物资料
-  processed/       # 女娲式人物 Skill、时间线、可审计 RAG chunks
-  indexes/         # Chroma 向量索引
-frontend/
-  static/          # 前端 JS/CSS/图片/音乐资源
-  *.html           # 登录、角色选择、聊天页面
-scripts/           # 数据导入、索引构建、测试脚本
-tests/             # 测试目录
 ```
 
 ## 本地运行
