@@ -57,25 +57,7 @@ StoryRole 是一个支持导入任意小说、创建自定义角色，并与小�
 }
 ```
 
-因此，前端展示的是“这一次保存或提问实际调用了什么”，而不是按时间范围拼出的历史统计。
 
-## Agent 与 A2A
-
-当前主要 Agent：
-
-| Agent | 职责 |
-| --- | --- |
-| `character-resolver` | 判断角色是否出现在小说原文并保存角色索引 |
-| `character-period-analysis` | 根据原文和用户时期名称提供时期建议 |
-| `nuwa-profiler` | 生成并持久化角色时期画像 |
-| `query-planner` | 判断本轮问题的执行需求，默认使用 Laya 后端 |
-| `deep-question-planner` | 为深度问题生成受约束的检索计划 |
-| `context-curator` | 整理画像、原文、记忆、关系和外部证据 |
-| `relationship-state` | 读取或更新 PostgreSQL 中的动态关系状态 |
-| `memory-decision` | 判断是否形成长期记忆候选 |
-| `character-reasoning` / `role-cognition` | 形成角色立场、情绪和回答策略 |
-| `consistency-guard` | 检查回答是否偏离画像、时期和证据边界 |
-| `character-conversation` | 编排一次完整的沉浸式对话 |
 
 Agent 当前默认在同一进程内通过 A2A 信封调用，同时提供 Agent Card 和 JSON-RPC 接口：
 
@@ -139,28 +121,7 @@ docker compose up -d postgres redis
 
 默认端口：
 
-| 服务 | 地址 |
-| --- | --- |
-| PostgreSQL | `localhost:5433` |
-| Redis | `localhost:6379` |
 
-### 3. 配置环境变量
-
-复制 `.env.example` 为 `.env`，至少配置：
-
-```env
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5433
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=postgres
-POSTGRES_DATABASE=three_body_agent
-
-REDIS_HOST=localhost
-REDIS_PORT=6379
-
-STORYROLE_CHAT_MODEL=qwen3.7-plus
-STORYROLE_NUWA_MODEL=qwen3.7-plus
-STORYROLE_DECISION_BACKEND=laya
 ```
 
 如果使用 DashScope 或其他 OpenAI-compatible 服务，还需要填写对应的 API Key 和 Base URL。Embedding 模型通过 `.env` 中的 embedding 配置读取；本地 Ollama embedding 也可以在运行设置中配置。
