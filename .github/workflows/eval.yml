@@ -1,0 +1,34 @@
+name: evaluation
+on:
+  pull_request:
+  schedule:
+    - cron: "0 2 * * 1"
+  workflow_dispatch:
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: three_body_agent
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d three_body_agent"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv python install 3.13
+      - run: uv sync
+      - run: uv run python scripts/init_postgres.py
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DATABASE: three_body_agent
+      - run: uv run python scripts/run_eval.py --config configs/eval/baseline.json
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DATABASE: three_body_agent

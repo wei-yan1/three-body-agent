@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from psycopg.errors import UniqueViolation
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.core.security import create_access_token, decode_access_token, hash_password, verify_password
-from app.schemas.auth import AuthRequest, AuthResponse, UserOut
-from app.storage.mysql.client import mysql_connection
-from app.storage.mysql.schema import init_mysql_schema
+from app.schemas.auth import LoginRequest, RegisterRequest, AuthResponse, UserOut
+from app.storage.postgres.client import postgres_connection
 
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -25,37 +25,35 @@ def _user_out(row: dict) -> UserOut:
 
 
 @router.post("/register", response_model=AuthResponse)
-def register(payload: AuthRequest) -> AuthResponse:
-    init_mysql_schema()
+def register(payload: RegisterRequest) -> AuthResponse:
     username = payload.username.strip()
     if not username:
         raise HTTPException(status_code=400, detail="用户名不能为空")
 
-    with mysql_connection() as connection:
+    with postgres_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute("SELECT id FROM users WHERE username=%s", (username,))
             if cursor.fetchone():
                 raise HTTPException(status_code=409, detail="用户名已存在")
-            cursor.execute(
-                """
-                INSERT INTO users (username, password_hash, display_name)
-                VALUES (%s, %s, %s)
-                """,
-                (username, hash_password(payload.password), username),
-            )
-            user_id = int(cursor.lastrowid)
-            cursor.execute("SELECT * FROM users WHERE id=%s", (user_id,))
+            try:
+                cursor.execute(
+                    """INSERT INTO users (username, password_hash, display_name)
+                    VALUES (%s, %s, %s) RETURNING *""",
+                    (username, hash_password(payload.password), username),
+                )
+            except UniqueViolation as error:
+                raise HTTPException(status_code=409, detail="用户名已存在") from error
             user = cursor.fetchone()
+            user_id = int(user["id"])
 
     token = create_access_token(user_id=user_id, username=username)
     return AuthResponse(access_token=token, user=_user_out(user))
 
 
 @router.post("/login", response_model=AuthResponse)
-def login(payload: AuthRequest) -> AuthResponse:
-    init_mysql_schema()
+def login(payload: LoginRequest) -> AuthResponse:
     username = payload.username.strip()
-    with mysql_connection() as connection:
+    with postgres_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute("SELECT * FROM users WHERE username=%s", (username,))
             user = cursor.fetchone()
@@ -80,12 +78,14 @@ def current_user(
     except Exception as error:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="登录已失效") from error
 
-    with mysql_connection() as connection:
+    with postgres_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute("SELECT * FROM users WHERE id=%s", (user_id,))
             user = cursor.fetchone()
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
+    if user.get("status") != "active":
+        raise HTTPException(status_code=403, detail="账号不可用")
     return _user_out(user)
 
 

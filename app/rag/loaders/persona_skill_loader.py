@@ -68,7 +68,7 @@ def build_persona_stage_content(record: dict[str, Any]) -> str:
 
 
 def build_persona_stage_metadata(record: dict[str, Any]) -> dict[str, Any]:
-    """Build metadata for vector DB filtering and MySQL traceability."""
+    """Build metadata for vector DB filtering and PostgreSQL traceability."""
     rag_card = record.get("RAG知识卡片", {})
     rag_metadata = rag_card.get("metadata", {})
 
@@ -144,3 +144,4 @@ def load_all_temporal_persona_skill_documents(
             load_temporal_persona_skill_documents(path, include_meta=include_meta)
         )
     return documents
+

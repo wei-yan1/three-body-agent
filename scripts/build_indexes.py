@@ -14,6 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from app.rag.indexing.bm25_index import PersistentBM25Index
 from app.rag.embeddings.structure_aware_chunker import (
     DEFAULT_RAG_CHUNK_DIR,
     build_and_write_default_chunks,
@@ -72,19 +73,41 @@ def load_documents_from_chunk_jsonl(path: Path) -> list[object]:
     return documents
 
 
-def _reset_chroma_collection(persist_directory: Path, collection_name: str) -> None:
-    """Delete one Chroma collection before rebuilding it from JSONL."""
+def _existing_collection_ids(persist_directory: Path, collection_name: str) -> set[str]:
     import chromadb
 
-    persist_directory.mkdir(parents=True, exist_ok=True)
     client = chromadb.PersistentClient(path=str(persist_directory))
     try:
-        client.delete_collection(collection_name)
+        collection = client.get_collection(collection_name)
     except Exception:
-        # Chroma raises different exception types across versions when a
-        # collection does not exist. Missing collection is the desired state.
-        pass
+        return set()
+    return {str(doc_id) for doc_id in collection.get(include=[]).get("ids", [])}
 
+
+def _delete_stale_documents(store: object, documents: list[object]) -> int:
+    """Remove index entries absent from the current chunk snapshot."""
+    collection = store._collection
+    existing_ids = {str(doc_id) for doc_id in collection.get(include=[]).get("ids", [])}
+    incoming_ids = {str(document.metadata["chunk_id"]) for document in documents}
+    stale_ids = sorted(existing_ids - incoming_ids)
+    if stale_ids:
+        collection.delete(ids=stale_ids)
+    return len(stale_ids)
+
+def _add_documents_with_retry(store: object, documents: list[object], *, batch_size: int) -> int:
+    added = 0
+    for batch in _batched(documents, batch_size):
+        ids = [document.metadata["chunk_id"] for document in batch]
+        for attempt in range(5):
+            try:
+                store.add_documents(batch, ids=ids)
+                added += len(batch)
+                break
+            except Exception:
+                if attempt == 4:
+                    raise
+                time.sleep(min(30, 2**attempt))
+    return added
 
 def build_chunks(output_dir: Path = DEFAULT_RAG_CHUNK_DIR) -> dict[str, int]:
     """Build auditable JSONL chunk files."""
@@ -93,92 +116,52 @@ def build_chunks(output_dir: Path = DEFAULT_RAG_CHUNK_DIR) -> dict[str, int]:
 
 def build_chroma_indexes(
     persist_directory: Path = DEFAULT_CHROMA_DIR,
-    batch_size: int = 64,
+    batch_size: int = 40,
     novel_chunks_path: Path = DEFAULT_NOVEL_CHUNKS_PATH,
 ) -> dict[str, int | str]:
-    """Build Chroma collections using DashScope/Bailian embeddings."""
+    """Incrementally build Chroma and persistent BM25 collections."""
     from dotenv import load_dotenv
     from langchain_chroma import Chroma
-
     from app.rag.embeddings.embedding_model import create_dashscope_embeddings
 
     load_dotenv()
     embeddings = create_dashscope_embeddings()
     persist_directory.mkdir(parents=True, exist_ok=True)
-
     persona_docs = _clean_documents(build_persona_structure_documents())
     novel_docs = _clean_documents(load_documents_from_chunk_jsonl(novel_chunks_path))
-
-    _reset_chroma_collection(persist_directory, PERSONA_COLLECTION)
-    _reset_chroma_collection(persist_directory, NOVEL_COLLECTION)
-
-    persona_store = Chroma(
-        collection_name=PERSONA_COLLECTION,
-        embedding_function=embeddings,
-        persist_directory=str(persist_directory),
-    )
-    novel_store = Chroma(
-        collection_name=NOVEL_COLLECTION,
-        embedding_function=embeddings,
-        persist_directory=str(persist_directory),
-    )
-
-    for batch in _batched(persona_docs, batch_size):
-        persona_store.add_documents(
-            batch,
-            ids=[document.metadata["chunk_id"] for document in batch],
-        )
-    for batch in _batched(novel_docs, batch_size):
-        novel_store.add_documents(
-            batch,
-            ids=[document.metadata["chunk_id"] for document in batch],
-        )
-
-    return {
-        "persist_directory": str(persist_directory),
-        "persona_collection": PERSONA_COLLECTION,
-        "persona_documents": len(persona_docs),
-        "novel_collection": NOVEL_COLLECTION,
-        "novel_source": str(novel_chunks_path),
-        "novel_documents": len(novel_docs),
-    }
+    persona_store = Chroma(collection_name=PERSONA_COLLECTION, embedding_function=embeddings, persist_directory=str(persist_directory))
+    novel_store = Chroma(collection_name=NOVEL_COLLECTION, embedding_function=embeddings, persist_directory=str(persist_directory))
+    persona_deleted = _delete_stale_documents(persona_store, persona_docs)
+    novel_deleted = _delete_stale_documents(novel_store, novel_docs)
+    persona_existing = _existing_collection_ids(persist_directory, PERSONA_COLLECTION)
+    novel_existing = _existing_collection_ids(persist_directory, NOVEL_COLLECTION)
+    added_persona = _add_documents_with_retry(persona_store, [d for d in persona_docs if d.metadata["chunk_id"] not in persona_existing], batch_size=batch_size)
+    added_novel = _add_documents_with_retry(novel_store, [d for d in novel_docs if d.metadata["chunk_id"] not in novel_existing], batch_size=batch_size)
+    PersistentBM25Index(persist_directory.parent / "bm25" / f"{PERSONA_COLLECTION}.json").replace_documents(persona_docs)
+    PersistentBM25Index(persist_directory.parent / "bm25" / f"{NOVEL_COLLECTION}.json").replace_documents(novel_docs)
+    return {"persist_directory": str(persist_directory), "persona_collection": PERSONA_COLLECTION, "persona_documents": len(persona_docs), "persona_added": added_persona, "persona_deleted": persona_deleted, "novel_collection": NOVEL_COLLECTION, "novel_source": str(novel_chunks_path), "novel_documents": len(novel_docs), "novel_added": added_novel, "novel_deleted": novel_deleted}
 
 
 def build_novel_chroma_index(
     persist_directory: Path = DEFAULT_CHROMA_DIR,
     novel_chunks_path: Path = DEFAULT_NOVEL_CHUNKS_PATH,
-    batch_size: int = 64,
+    batch_size: int = 40,
 ) -> dict[str, int | str]:
-    """Rebuild only the novel Chroma collection from novel_chunks.jsonl."""
+    """Incrementally build only the novel collection and sparse index."""
     from dotenv import load_dotenv
     from langchain_chroma import Chroma
-
     from app.rag.embeddings.embedding_model import create_dashscope_embeddings
 
     load_dotenv()
     embeddings = create_dashscope_embeddings()
     persist_directory.mkdir(parents=True, exist_ok=True)
     novel_docs = _clean_documents(load_documents_from_chunk_jsonl(novel_chunks_path))
-    _reset_chroma_collection(persist_directory, NOVEL_COLLECTION)
-
-    novel_store = Chroma(
-        collection_name=NOVEL_COLLECTION,
-        embedding_function=embeddings,
-        persist_directory=str(persist_directory),
-    )
-    for batch in _batched(novel_docs, batch_size):
-        novel_store.add_documents(
-            batch,
-            ids=[document.metadata["chunk_id"] for document in batch],
-        )
-
-    return {
-        "persist_directory": str(persist_directory),
-        "novel_collection": NOVEL_COLLECTION,
-        "novel_source": str(novel_chunks_path),
-        "embedding_model": getattr(embeddings, "model", "unknown"),
-        "novel_documents": len(novel_docs),
-    }
+    novel_store = Chroma(collection_name=NOVEL_COLLECTION, embedding_function=embeddings, persist_directory=str(persist_directory))
+    novel_deleted = _delete_stale_documents(novel_store, novel_docs)
+    existing = _existing_collection_ids(persist_directory, NOVEL_COLLECTION)
+    added_novel = _add_documents_with_retry(novel_store, [d for d in novel_docs if d.metadata["chunk_id"] not in existing], batch_size=batch_size)
+    PersistentBM25Index(persist_directory.parent / "bm25" / f"{NOVEL_COLLECTION}.json").replace_documents(novel_docs)
+    return {"persist_directory": str(persist_directory), "novel_collection": NOVEL_COLLECTION, "novel_source": str(novel_chunks_path), "embedding_model": getattr(embeddings, "model", "unknown"), "novel_documents": len(novel_docs), "novel_added": added_novel, "novel_deleted": novel_deleted}
 
 
 def write_novel_async_embedding_input(
@@ -379,7 +362,7 @@ def import_novel_async_embeddings_to_chroma(
     persist_directory: Path = DEFAULT_CHROMA_DIR,
     novel_chunks_path: Path = DEFAULT_NOVEL_CHUNKS_PATH,
     async_result_path: Path = DEFAULT_ASYNC_RESULT_PATH,
-    batch_size: int = 64,
+    batch_size: int = 40,
 ) -> dict[str, int | str]:
     """Import async-v2 embeddings into Chroma without re-embedding locally."""
     from langchain_chroma import Chroma
@@ -393,7 +376,6 @@ def import_novel_async_embeddings_to_chroma(
         )
         raise ValueError(message)
 
-    _reset_chroma_collection(persist_directory, NOVEL_COLLECTION)
     store = Chroma(
         collection_name=NOVEL_COLLECTION,
         embedding_function=None,

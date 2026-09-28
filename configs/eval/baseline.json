@@ -1,0 +1,8 @@
+{
+  "dataset": "data/eval/baseline.jsonl",
+  "model": {"provider": "openai", "name": "qwen3.7-plus", "temperature": 0, "max_output_tokens": 1024},
+  "chunking": {"chunk_size": 800, "chunk_overlap": 80},
+  "retrieval": {"top_k": 5, "rerank": true},
+  "prices": {"input_per_million": 0, "output_per_million": 0},
+  "thresholds": {"min_recall_at_k": 0, "min_mrr": 0, "min_answer_quality": 0, "max_cost": 999999, "max_duration_ms": 99999999}
+}

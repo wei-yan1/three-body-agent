@@ -3,31 +3,33 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Log in</title>
-    <link rel="stylesheet" href="/static/login.css?v=music-1" />
-    <link rel="stylesheet" href="/static/global-music.css?v=music-1" />
+    <title>StoryRole · 进入档案室</title>
+    <link rel="stylesheet" href="/static/login.css?v=storyrole-2" />
   </head>
   <body>
-    <main class="page-shell">
-      <img class="login-art" src="/assets/login-background" alt="" />
-      <section class="login-panel" aria-label="login form">
-        <button id="mode-toggle" class="mode-button" type="button">log in</button>
-        <form id="auth-form" class="auth-card">
-          <label>
-            <span>username</span>
-            <input id="username" name="username" autocomplete="username" required />
-          </label>
-          <label>
-            <span>password</span>
-            <input id="password" name="password" type="password" autocomplete="current-password" required />
-          </label>
-          <button id="submit-button" class="submit-button" type="submit">enter</button>
-          <button id="switch-mode" class="switch-button" type="button">create account</button>
-          <p id="message" class="message" role="status"></p>
+    <main class="auth-shell">
+      <section class="intro-panel" aria-label="StoryRole 介绍">
+        <header class="brand"><span class="brand-mark">叙</span><span><b>STORYROLE</b><small>小说角色档案室</small></span></header>
+        <div class="intro-copy">
+          <p class="kicker">A PRIVATE READING ROOM</p>
+          <h1>让Ta来到主角的身边</h1>
+          <p class="intro-text">保存小说，建立人物档案，在证据、人格与记忆之间重新开始一段对话。</p>
+        </div>
+        <div class="intro-footer"><span>原文 · 人格 · 时序</span><span>STORYROLE / 01</span></div>
+      </section>
+      <section class="auth-panel" aria-label="账号入口">
+        <div class="auth-heading"><p id="auth-kicker">欢迎回来</p><h2 id="auth-title">进入你的档案室</h2><span id="auth-description">继续上次留下的小说与角色。</span></div>
+        <form id="auth-form" class="auth-form" novalidate>
+          <label for="username"><span>用户名</span><input id="username" name="username" autocomplete="username" minlength="2" maxlength="64" required placeholder="输入用户名" /></label>
+          <label for="password"><span>密码</span><input id="password" name="password" type="password" autocomplete="current-password" minlength="8" maxlength="128" required placeholder="至少 8 位字符" /></label>
+          <label id="confirm-field" class="hidden" for="password-confirm"><span>确认密码</span><input id="password-confirm" type="password" autocomplete="new-password" minlength="8" maxlength="128" placeholder="再次输入密码" /></label>
+          <button id="submit-button" class="submit-button" type="submit"><span>进入档案室</span><b>↗</b></button>
+          <p id="message" class="message" role="status" aria-live="polite"></p>
         </form>
+        <button id="switch-mode" class="switch-button" type="button">还没有账号？创建一个</button>
+        <p class="privacy-note">账号与小说档案保存在当前 StoryRole 数据库中。</p>
       </section>
     </main>
-    <script src="/static/global-music.js?v=music-1"></script>
-    <script src="/static/login.js?v=music-1"></script>
+    <script src="/static/login.js?v=storyrole-2"></script>
   </body>
 </html>

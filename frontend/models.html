@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>调用监控 · StoryRole</title><link rel="stylesheet" href="/static/models.css?v=1"></head>
+<body>
+<main class="shell">
+  <header><a href="/storyrole" class="brand"><span>叙</span><b>STORYROLE</b><small>模型调用监控</small></a><nav><a href="/settings">设置</a><a href="/storyrole">返回档案室</a><button id="logout" type="button">退出</button></nav></header>
+  <section class="hero"><div><p>OBSERVABILITY / MODEL USAGE</p><h1>每一次调用，<br>都看得见。</h1><span>记录模型、token、费用、延迟与 embedding 缓存，数据来自持久化数据库。</span></div><div class="refresh"><span id="updated">等待数据</span><button id="refresh" type="button">刷新</button></div></section>
+  <div id="error" class="error hidden"></div>
+  <section class="cards" id="totals"></section>
+  <section class="grid">
+    <article class="panel"><div class="panel-head"><h2>近 14 日消耗</h2><small id="period">-</small></div><div id="daily" class="daily"></div></article>
+    <article class="panel"><div class="panel-head"><h2>Embedding 缓存</h2><small>持久化 PostgreSQL</small></div><div id="cache" class="cache"></div></article>
+  </section>
+  <section class="grid observability-grid">
+    <article class="panel"><div class="panel-head"><h2>Agent 调用</h2><small>按 Agent 汇总</small></div><div class="agent-list" id="agents"></div></article>
+    <article class="panel"><div class="panel-head"><h2>流程总览</h2><small>最近运行</small></div><div class="run-metrics" id="run-metrics"></div></article>
+  </section>
+  <section class="pipeline-board">
+    <article class="panel"><div class="panel-head"><div><h2>各环节耗时</h2><p class="panel-note">按阶段统计平均耗时，定位回答链路中的慢点</p></div><small id="pipeline-window">-</small></div><div class="stage-list" id="pipeline-stages"></div></article>
+    <article class="panel"><div class="panel-head"><div><h2>最近流程</h2><p class="panel-note">导入、对话和 Agent 运行记录</p></div><small>30 次</small></div><div class="run-list" id="pipeline-runs"></div></article>
+  </section>
+  <section class="panel calls"><div class="panel-head"><h2>最近调用</h2><small>最多显示 50 条</small></div><div class="table-wrap"><table><thead><tr><th>时间</th><th>Agent / 操作</th><th>模型</th><th>状态</th><th>token</th><th>耗时</th><th>费用</th></tr></thead><tbody id="recent"></tbody></table></div></section>
+</main><link rel="stylesheet" href="/static/models-observability.css?v=2"><script src="/static/models.js?v=4"></script>
+</body></html>

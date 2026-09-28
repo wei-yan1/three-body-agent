@@ -1,4 +1,4 @@
-"""Persistence helpers for user episodic memories."""
+"""Persistence helpers for user episodic memories in PostgreSQL."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ from app.core.config.settings import (
     EPISODIC_RECALL_BOOST,
 )
 from app.schemas.auth import UserOut
-from app.storage.mysql.client import mysql_connection
-from app.storage.mysql.schema import init_mysql_schema
+from app.storage.postgres.client import postgres_connection
+from app.storage.postgres.schema import init_postgres_schema
 
 
 def add_episodic_memory(
@@ -30,14 +30,14 @@ def add_episodic_memory(
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Insert one episodic memory and return the persisted row."""
-    init_mysql_schema()
+    init_postgres_schema()
     bounded_importance = max(0.0, min(float(importance), 1.0))
     metadata_payload = {
         "original_importance": bounded_importance,
         **(metadata or {}),
     }
     metadata_json = json.dumps(metadata_payload, ensure_ascii=False)
-    with mysql_connection() as connection:
+    with postgres_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -57,12 +57,12 @@ def add_episodic_memory(
                     source_turn_range,
                     metadata
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'episodic', %s, %s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE
-                    content=VALUES(content),
-                    summary=VALUES(summary),
-                    importance=VALUES(importance),
-                    metadata=VALUES(metadata),
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'episodic', %s, %s, %s, %s, %s::jsonb)
+                ON CONFLICT (memory_id) DO UPDATE SET
+                    content=EXCLUDED.content,
+                    summary=EXCLUDED.summary,
+                    importance=EXCLUDED.importance,
+                    metadata=EXCLUDED.metadata,
                     updated_at=NOW()
                 """,
                 (
@@ -98,8 +98,8 @@ def list_episodic_memories(
     min_importance: float = 0.1,
     limit: int = 20,
 ) -> list[dict[str, Any]]:
-    """List recent episodic memories from MySQL for a strict scope."""
-    init_mysql_schema()
+    """List recent episodic memories from PostgreSQL for a strict scope."""
+    init_postgres_schema()
     conditions = [
         "user_id=%s",
         "character_name=%s",
@@ -120,7 +120,7 @@ def list_episodic_memories(
 
     params.append(max(1, int(limit)))
     where_clause = " AND ".join(conditions)
-    with mysql_connection() as connection:
+    with postgres_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 f"""
@@ -141,8 +141,8 @@ def get_episodic_memories_by_ids(memory_ids: list[str]) -> dict[str, dict[str, A
     if not ids:
         return {}
     placeholders = ", ".join(["%s"] * len(ids))
-    init_mysql_schema()
-    with mysql_connection() as connection:
+    init_postgres_schema()
+    with postgres_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 f"""
@@ -164,8 +164,8 @@ def touch_episodic_memories(memory_ids: list[str]) -> None:
     if not ids:
         return
     placeholders = ", ".join(["%s"] * len(ids))
-    init_mysql_schema()
-    with mysql_connection() as connection:
+    init_postgres_schema()
+    with postgres_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 f"""
@@ -190,8 +190,8 @@ def boost_episodic_memories(
     placeholders = ", ".join(["%s"] * len(ids))
     safe_boost = max(0.0, float(recall_boost))
     safe_max = max(0.0, min(float(max_importance), 1.0))
-    init_mysql_schema()
-    with mysql_connection() as connection:
+    init_postgres_schema()
+    with postgres_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 f"""
@@ -232,8 +232,8 @@ def forget_capacity_based_memories(
     """
     safe_capacity = max(1, int(capacity))
     safe_threshold = max(0.0, min(float(threshold), 1.0))
-    init_mysql_schema()
-    with mysql_connection() as connection:
+    init_postgres_schema()
+    with postgres_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -267,20 +267,16 @@ def forget_capacity_based_memories(
                             GREATEST(
                                 0,
                                 1 - (
-                                    TIMESTAMPDIFF(
-                                        SECOND,
-                                        COALESCE(last_used_at, created_at),
-                                        NOW()
-                                    ) / 604800
+                                    EXTRACT(EPOCH FROM (NOW() - COALESCE(last_used_at, created_at))) / 604800
                                 )
                             ) * 0.25
                         )
                         + (
                             CAST(
                                 COALESCE(
-                                    JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.original_importance')),
-                                    importance
-                                ) AS DECIMAL(6,4)
+                                    metadata->>'original_importance',
+                                    importance::text
+                                )::double precision
                             ) * 0.15
                         )
                     ) AS retention_score
@@ -329,8 +325,8 @@ def delete_episodic_memories_for_threads(
     if not ids:
         return []
     placeholders = ", ".join(["%s"] * len(ids))
-    init_mysql_schema()
-    with mysql_connection() as connection:
+    init_postgres_schema()
+    with postgres_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 f"""
@@ -349,3 +345,4 @@ def delete_episodic_memories_for_threads(
                 (user.id, *ids),
             )
             return memory_ids
+

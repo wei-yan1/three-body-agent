@@ -8,6 +8,7 @@ from typing import Any
 
 DEFAULT_DASHSCOPE_DOCUMENT_EMBEDDING_MODEL = "text-embedding-v2"
 DEFAULT_DASHSCOPE_QUERY_EMBEDDING_MODEL = "text-embedding-v2"
+DEFAULT_OLLAMA_EMBEDDING_MODEL = "nomic-embed-text"
 MULTIMODAL_EMBEDDING_MODELS = {"qwen3-vl-embedding", "qwen2.5-vl-embedding"}
 
 
@@ -89,8 +90,42 @@ def _extract_multimodal_embedding(output: Any) -> list[float]:
 def create_dashscope_embeddings(
     model: str | None = None,
     dashscope_api_key: str | None = None,
+    *,
+    use_cache: bool = True,
+    trace_id: str | None = None,
+    user_id: int | None = None,
 ):
-    """Create DashScope/Bailian embeddings for Chroma."""
+    """Create the configured embedding backend for Chroma.
+
+    The historical function name is retained because it is used throughout
+    the application. Set ``EMBEDDING_PROVIDER=ollama`` to run embeddings
+    locally without sending document text to a remote provider.
+    """
+    from app.core.config.runtime_settings import get_user_setting
+    provider = str(get_user_setting(user_id, "embedding.provider", os.getenv("EMBEDDING_PROVIDER", "dashscope"))).strip().lower()
+    if provider == "ollama":
+        selected_model = model or get_user_setting(user_id, "embedding.model", os.getenv("OLLAMA_EMBEDDING_MODEL")) or DEFAULT_OLLAMA_EMBEDDING_MODEL
+        try:
+            from langchain_ollama import OllamaEmbeddings
+        except ImportError as error:
+            raise RuntimeError(
+                "langchain-ollama is required for Ollama embeddings. Install project dependencies first."
+            ) from error
+        backend = OllamaEmbeddings(
+            model=selected_model,
+            base_url=str(get_user_setting(user_id, "embedding.ollama_base_url", os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434"))),
+        )
+        if not use_cache:
+            return backend
+        from app.rag.embeddings.cached import CachedEmbeddings
+        return CachedEmbeddings(
+            backend,
+            provider="ollama",
+            model=selected_model,
+            model_version=os.getenv("OLLAMA_EMBEDDING_MODEL_VERSION", ""),
+            trace_id=trace_id,
+        )
+
     api_key = dashscope_api_key or os.getenv("DASHSCOPE_API_KEY")
     if not api_key:
         message = "DASHSCOPE_API_KEY is required to build DashScope embeddings."
@@ -103,9 +138,19 @@ def create_dashscope_embeddings(
     )
 
     if selected_model in MULTIMODAL_EMBEDDING_MODELS:
-        return DashScopeMultiModalTextEmbeddings(
+        backend = DashScopeMultiModalTextEmbeddings(
             model=selected_model,
             dashscope_api_key=api_key,
+        )
+        if not use_cache:
+            return backend
+        from app.rag.embeddings.cached import CachedEmbeddings
+        return CachedEmbeddings(
+            backend,
+            provider="dashscope",
+            model=selected_model,
+            model_version=os.getenv("DASHSCOPE_EMBEDDING_MODEL_VERSION", ""),
+            trace_id=trace_id,
         )
 
     try:
@@ -117,9 +162,19 @@ def create_dashscope_embeddings(
         )
         raise RuntimeError(message) from error
 
-    return DashScopeEmbeddings(
+    backend = DashScopeEmbeddings(
         model=selected_model,
         dashscope_api_key=api_key,
+    )
+    if not use_cache:
+        return backend
+    from app.rag.embeddings.cached import CachedEmbeddings
+    return CachedEmbeddings(
+        backend,
+        provider="dashscope",
+        model=selected_model,
+        model_version=os.getenv("DASHSCOPE_EMBEDDING_MODEL_VERSION", ""),
+        trace_id=trace_id,
     )
 
 
@@ -129,3 +184,4 @@ def get_dashscope_document_embedding_model() -> str:
         os.getenv("DASHSCOPE_DOCUMENT_EMBEDDING_MODEL")
         or DEFAULT_DASHSCOPE_DOCUMENT_EMBEDDING_MODEL
     )
+
