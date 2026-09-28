@@ -5,13 +5,15 @@ from __future__ import annotations
 import math
 import os
 import re
-from collections import Counter, defaultdict
+from collections import Counter
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Iterable
 
 
 from langchain_core.documents import Document
+
+from app.rag.indexing.bm25_index import PersistentBM25Index
+from app.observability import record_model_invocation
 
 
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_]+|[\u4e00-\u9fff]")
@@ -117,9 +119,11 @@ class DashScopeReranker:
         self,
         model: str | None = None,
         dashscope_api_key: str | None = None,
+        trace_id: str | None = None,
     ) -> None:
         self.model = model or os.getenv("DASHSCOPE_RERANK_MODEL", "qwen3-rerank")
         self.dashscope_api_key = dashscope_api_key or os.getenv("DASHSCOPE_API_KEY")
+        self.trace_id = trace_id
         if not self.dashscope_api_key:
             raise RuntimeError("DASHSCOPE_API_KEY is required for DashScope rerank.")
 
@@ -133,30 +137,44 @@ class DashScopeReranker:
             return []
 
         import dashscope
+        from datetime import UTC, datetime
+        import time
 
+        started_at = datetime.now(UTC)
+        clock = time.perf_counter()
         documents = [item.document.page_content for item in scored_documents]
-        response = dashscope.TextReRank.call(
-            model=self.model,
-            query=query,
-            documents=documents,
-            top_n=min(top_k, len(documents)),
-            return_documents=False,
-            api_key=self.dashscope_api_key,
-        )
-        if response.status_code != 200:
-            message = (
-                f"DashScope rerank failed: code={response.code}, "
-                f"message={response.message}"
+        try:
+            response = dashscope.TextReRank.call(
+                model=self.model,
+                query=query,
+                documents=documents,
+                top_n=min(top_k, len(documents)),
+                return_documents=False,
+                api_key=self.dashscope_api_key,
             )
-            raise RuntimeError(message)
-
-        reranked: list[ScoredDocument] = []
-        for result in _extract_rerank_results(response.output):
-            index = int(result["index"])
-            item = scored_documents[index]
-            item.rerank_score = float(result["relevance_score"])
-            reranked.append(item)
-        return reranked
+            if response.status_code != 200:
+                raise RuntimeError(
+                    f"DashScope rerank failed: code={response.code}, message={response.message}"
+                )
+            reranked: list[ScoredDocument] = []
+            for result in _extract_rerank_results(response.output):
+                index = int(result["index"])
+                item = scored_documents[index]
+                item.rerank_score = float(result["relevance_score"])
+                reranked.append(item)
+            record_model_invocation(
+                trace_id=self.trace_id, operation="rerank", provider="dashscope", model=self.model,
+                started_at=started_at, duration_ms=(time.perf_counter() - clock) * 1000,
+                metadata={"candidate_count": len(documents), "top_k": top_k},
+            )
+            return reranked
+        except Exception as error:
+            record_model_invocation(
+                trace_id=self.trace_id, operation="rerank", provider="dashscope", model=self.model,
+                started_at=started_at, duration_ms=(time.perf_counter() - clock) * 1000,
+                status="failed", error=str(error), metadata={"candidate_count": len(documents), "top_k": top_k},
+            )
+            raise
 
 
 def _extract_rerank_results(output: Any) -> list[dict[str, Any]]:
@@ -190,13 +208,63 @@ class HybridFusionRetriever:
         sparse_weight: float = 0.3,
         candidate_multiplier: int = 6,
         rerank_enabled: bool = True,
+        sparse_index: PersistentBM25Index | None = None,
+        trace_id: str | None = None,
+        dense_filter: dict[str, Any] | None = None,
     ) -> None:
         self.vectorstore = vectorstore
-        self.reranker = reranker or DashScopeReranker()
+        self.reranker = reranker if rerank_enabled else None
+        if rerank_enabled and self.reranker is None:
+            self.reranker = DashScopeReranker()
         self.dense_weight = dense_weight
         self.sparse_weight = sparse_weight
         self.candidate_multiplier = candidate_multiplier
         self.rerank_enabled = rerank_enabled
+        self.sparse_index = sparse_index
+        self.trace_id = trace_id
+        self.dense_filter = dense_filter
+        if self.reranker is not None and getattr(self.reranker, "trace_id", None) is None:
+            self.reranker.trace_id = trace_id
+
+    def rerank_documents(
+        self, query: str, documents: list[Document], *, top_k: int
+    ) -> list[Document]:
+        """Rerank an already merged candidate pool once.
+
+        Deep mode uses this after fan-out retrieval so rerank latency is paid
+        once instead of once per sub-query. If reranking is disabled or the
+        provider is unavailable, preserve the fused candidate order.
+        """
+        if not documents:
+            return []
+        if not self.rerank_enabled:
+            return documents[:top_k]
+        scored = [
+            ScoredDocument(
+                document=document,
+                doc_id=str(document.metadata.get("chunk_id")),
+                fused_score=float(document.metadata.get("fusion_score", 0.0)),
+            )
+            for document in documents
+        ]
+        try:
+            reranked = self.reranker.rerank(query, scored, top_k=top_k) if self.reranker else scored[:top_k]
+        except Exception:
+            reranked = scored[:top_k]
+        for rank, item in enumerate(reranked, start=1):
+            item.document.metadata["rerank_score"] = item.rerank_score or 0.0
+            item.document.metadata["rerank_rank"] = rank
+        return [item.document for item in reranked]
+
+    @staticmethod
+    def _combine_filters(
+        base: dict[str, Any] | None, extra: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        if not base:
+            return extra
+        if not extra:
+            return base
+        return {"$and": [base, extra]}
 
     def retrieve(
         self,
@@ -207,10 +275,11 @@ class HybridFusionRetriever:
         sparse_candidates: list[Document] | None = None,
     ) -> list[Document]:
         candidate_k = max(k * self.candidate_multiplier, k)
+        dense_filter = self._combine_filters(self.dense_filter, filter)
         dense_results = self.vectorstore.similarity_search_with_score(
             query,
             k=candidate_k,
-            filter=filter,
+            filter=dense_filter,
         )
 
         raw_docs: dict[str, Document] = {}
@@ -220,12 +289,23 @@ class HybridFusionRetriever:
             raw_docs[doc_id] = document
             dense_scores[doc_id] = 1.0 / (1.0 + max(float(distance), 0.0))
 
-        sparse_pool = sparse_candidates or list(raw_docs.values())
-        bm25_scores = BM25Scorer(sparse_pool).score(query)
-        for document in sparse_pool:
-            doc_id = str(document.metadata.get("chunk_id"))
-            raw_docs.setdefault(doc_id, document)
-
+        if self.sparse_index is not None and self.sparse_index.records:
+            sparse_results = self.sparse_index.search(
+                query,
+                k=candidate_k,
+                filter_query=filter,
+            )
+            bm25_scores: dict[str, float] = {}
+            for document, score in sparse_results:
+                doc_id = str(document.metadata.get("chunk_id"))
+                raw_docs.setdefault(doc_id, document)
+                bm25_scores[doc_id] = score
+        else:
+            sparse_pool = sparse_candidates or list(raw_docs.values())
+            bm25_scores = BM25Scorer(sparse_pool).score(query)
+            for document in sparse_pool:
+                doc_id = str(document.metadata.get("chunk_id"))
+                raw_docs.setdefault(doc_id, document)
         fused_scores = weighted_sum_fusion(
             [dense_scores, bm25_scores],
             [self.dense_weight, self.sparse_weight],

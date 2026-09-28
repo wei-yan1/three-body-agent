@@ -1,0 +1,51 @@
+{
+  "schema_version": 2,
+  "import_id": "54a5fd53434a493abafc4005fb0c70a4",
+  "owner_id": 2,
+  "novel_name": "three_body",
+  "status": "completed",
+  "stage": "ready",
+  "index": {
+    "collection_name": "storyrole_novel_54a5fd53434a493abafc4005fb0c70a4",
+    "vector_index_path": "data\\indexes\\chroma",
+    "bm25_index_path": "data\\indexes\\bm25\\storyrole_novel_54a5fd53434a493abafc4005fb0c70a4.json",
+    "input_documents": 721,
+    "embedded_documents": 721,
+    "skipped_documents": 0,
+    "deleted_documents": 0,
+    "batch_count": 19
+  },
+  "total_files": 1,
+  "processed_files": 1,
+  "total_bytes": 2641819,
+  "chunk_count": 721,
+  "warnings": [
+    "duplicate_chapter_numbers:[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]"
+  ],
+  "error": null,
+  "sources": [
+    {
+      "source_id": "source_0000",
+      "file_name": "three_body.txt",
+      "original_name": "three_body.txt",
+      "path": "data\\imports\\54a5fd53434a493abafc4005fb0c70a4\\sources\\0000_three_body.txt",
+      "size_bytes": 2641819,
+      "sha256": "343effc35e6bf177496cf3d96ebd8bb627a17bcafa03cfb57031c2c9ca35eb00",
+      "order": 0,
+      "status": "completed",
+      "warnings": [],
+      "error": null,
+      "chapter_count": 144,
+      "paragraph_count": 12102,
+      "dialogue_paragraph_count": 7430,
+      "chunk_count": 721,
+      "quality_score": 0.9
+    }
+  ],
+  "chunks_path": "data\\imports\\54a5fd53434a493abafc4005fb0c70a4\\chunks.jsonl",
+  "report_path": "data\\imports\\54a5fd53434a493abafc4005fb0c70a4\\report.json",
+  "created_at": "2026-09-27T06:13:57.304404+00:00",
+  "updated_at": "2026-09-27T06:14:13.903334+00:00",
+  "started_at": "2026-09-27T06:13:57.373646+00:00",
+  "completed_at": "2026-09-27T06:14:13.886317+00:00"
+}

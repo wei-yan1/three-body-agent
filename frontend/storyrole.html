@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#e8e4d9" />
+  <title>StoryRole · 角色档案室</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/storyrole.css?v=period-trace-modal-2" />
+</head>
+<body>
+<main class="app-shell">
+  <header class="masthead">
+    <a class="wordmark" href="/storyrole"><span class="seal">叙</span><span>STORYROLE<small>小说角色档案室</small></span></a>
+    <div class="workspace-state"><span class="live-dot"></span><span>本地工作区</span><i></i><span id="workspace-indicator">尚未建立档案</span></div>
+    <div class="masthead-actions"><a href="/models">调用监控</a><a href="/settings">设置</a><a href="/storyrole">工作台</a><button id="logout" type="button">退出</button></div>
+  </header>
+
+  <section class="intro-band">
+    <div class="intro-copy">
+      <p class="chapter-label"><span>私人档案计划</span><b></b><span>NO. 01</span></p>
+      <h1>让一段故事，<br /><span>重新拥有声音。</span></h1>
+      <p>从原文建立人物档案，辨认他走过的时期，再以那个时期的眼光重新交谈。</p>
+    </div>
+    <div class="intro-aside"><div class="glyph"><i></i><i></i><i></i><b></b></div><strong>每一次回答<br />都从证据开始。</strong><small>原文 · 人格 · 时序</small></div>
+  </section>
+
+  <nav class="workflow" aria-label="创作流程">
+    <div class="workflow-step is-current" data-step="import"><b>01</b><span>收录原文</span></div><i></i>
+    <div class="workflow-step" data-step="character"><b>02</b><span>建立人物</span></div><i></i>
+    <div class="workflow-step" data-step="period"><b>03</b><span>辨认时期</span></div><i></i>
+    <div class="workflow-step" data-step="conversation"><b>04</b><span>开始交谈</span></div>
+  </nav>
+
+  <section class="studio-grid">
+    <aside class="archive-column">
+      <section class="folio import-folio">
+        <div class="folio-head"><div><small>原始材料</small><h2>收录一部小说</h2></div><em>A</em></div>
+        <p class="note">TXT / Markdown · 支持多卷上传</p>
+        <label class="file-well" id="dropzone" for="novel-files"><input id="novel-files" type="file" accept=".txt,.md,.markdown" multiple /><span class="plus">＋</span><strong id="file-label">选择小说文件</strong><small>或将文件拖放到这里</small></label>
+        <div id="selected-files" class="selected-files hidden"></div>
+        <label class="field-label" for="novel-name">档案名称</label><input id="novel-name" class="field-input" maxlength="255" placeholder="例如：三体 · 全三册" />
+        <button id="import-button" class="action-button dark" type="button"><span>建立文本索引</span><b>↗</b></button>
+        <div id="import-status" class="status" role="status" aria-live="polite"></div>
+        <div id="import-progress" class="import-progress hidden"><div class="progress-line"><span id="progress-stage">等待任务</span><span id="progress-count">0 / 0</span></div><div class="progress-track"><b id="progress-fill"></b></div><p id="import-metrics" class="metrics"></p><ul id="source-list" class="source-list"></ul><div id="import-actions" class="import-actions hidden"><button id="retry-import" class="text-action" type="button">重试失败文件</button><button id="cancel-import" class="text-action danger" type="button">取消任务</button></div></div>
+      </section>
+
+      <section class="folio library-folio">
+        <div class="folio-head"><div><small>小说档案</small><h2>继续一段故事</h2></div><em>＋</em></div>
+        <p class="note">本地保留的小说与已建立的角色档案都会出现在这里。</p>
+        <div id="novel-library" class="novel-library"><p class="library-empty">正在读取小说档案…</p></div>
+      </section>
+
+      <section class="folio character-folio locked" id="character-panel">
+        <div class="folio-head"><div><small>人物索引</small><h2>唤醒一个角色</h2></div><em>B</em></div>
+        <p class="note">先确认人物，再由你决定是否让 AI 分析画像和时期。</p>
+        <label class="field-label" for="character-name">人物姓名</label><div class="joined-input"><input id="character-name" class="field-input" maxlength="255" placeholder="输入小说中的名字" disabled /><button id="setup-button" class="icon-button" type="button" disabled>↗</button></div>
+        <div id="character-status" class="status" role="status" aria-live="polite"></div><div id="candidate-list" class="candidate-list hidden"></div><article id="profile-card" class="profile-slip hidden"></article>
+        <div id="period-tools" class="period-tools hidden"><div class="period-head"><div><small>人物时间线</small><strong>定义角色走过的阶段</strong></div><button id="analyze-periods" class="text-action" type="button">让 AI 判断范围</button></div><p class="note period-intro">先添加时期，再决定是否让 AI 根据原文补充章节范围。</p><div id="period-status" class="status" role="status" aria-live="polite"></div><div id="period-analysis" class="analysis hidden"></div><div id="period-editor" class="period-editor"><div class="period-list-head"><span>时期</span><span>操作</span></div><div id="period-list" class="period-list"></div><div class="period-actions"><button id="add-period" class="text-action" type="button">＋ 添加时期</button><div class="period-save-actions"><button id="period-trace-button" class="trace-button hidden" type="button"><span class="trace-pulse"></span>查看本次耗时</button><button id="confirm-periods" class="action-button outline" type="button">保存时期并生成画像</button></div></div></div></div>
+      </section>
+    </aside>
+
+    <section class="conversation-column" aria-label="角色对话工作区">
+      <div class="conversation-paper">
+        <div class="conversation-head"><div><small>对话记录</small><h2 id="chat-title">等待一位角色到来</h2></div><div id="chat-stamp" class="stamp"><span></span><b id="chat-state">尚未就绪</b></div></div>
+        <div id="active-period" class="active-period hidden"></div>
+        <div id="messages" class="messages"><div class="empty-conversation"><div>“</div><p>先收录小说，再建立人物档案。<br />当证据与时期准备好，对话会在这里展开。</p><small>故事尚未结束，只是暂时安静。</small></div></div>
+        <div id="turn-status" class="turn-status hidden"><span><i></i><i></i><i></i></span><b id="turn-status-text">正在整理回答</b></div>
+        <form id="chat-form" class="composer disabled"><textarea id="chat-input" rows="2" maxlength="4000" placeholder="先完成小说与人物档案，再开始交谈……" disabled></textarea><div class="composer-bottom"><label>回答方式<select id="chat-mode"><option value="auto">按问题选择</option><option value="quick">快速交谈</option><option value="deep">深入分析</option></select></label><label class="web-toggle"><input id="web-mode" type="checkbox" /> 联网搜索</label><small>Enter 发送 · Shift + Enter 换行</small><button id="send-button" class="send-button" type="submit" disabled><span>发送</span><b>↗</b></button></div></form>
+      </div>
+      <footer class="conversation-foot"><span>StoryRole / 人物档案系统</span><span id="trace-display">模型与流程状态会在回答后显示</span></footer>
+    </section>
+  </section>
+  <footer class="page-footer"><span>让角色留在自己的时代。</span><span>文本解析 · 女娲画像 · 有据而答</span></footer>
+</main>
+<div id="period-trace-modal" class="trace-modal hidden" role="dialog" aria-modal="true" aria-labelledby="period-trace-title"><div class="trace-backdrop" data-close-trace></div><section class="trace-dialog"><header class="trace-dialog-head"><div><small>本次保存</small><h2 id="period-trace-title">时期画像流程</h2><p id="period-trace-subtitle">按时期查看实际接口调用、Agent 和耗时。</p></div><button id="close-period-trace" class="trace-close" type="button" aria-label="关闭">×</button></header><div id="period-trace-list" class="period-trace-list"></div></section></div>
+<script src="/static/storyrole.js?v=period-trace-modal-2"></script>
+</body>
+</html>

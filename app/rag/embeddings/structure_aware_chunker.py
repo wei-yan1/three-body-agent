@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from pathlib import Path
 from typing import Any, Iterable
 
 from langchain_core.documents import Document
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from app.rag.docreader import DocReaderTextSplitter, SplitterConfig, parse_novel_file
+from app.rag.docreader.pipeline import build_text_documents as build_docreader_text_documents
 
 from app.rag.loaders.persona_skill_loader import (
     iter_temporal_persona_skill_paths,
@@ -22,6 +24,19 @@ DEFAULT_RAG_CHUNK_DIR = Path("data/processed/rag_chunks")
 
 NOVEL_CHUNK_SIZE = 1800
 NOVEL_CHUNK_OVERLAP = 180
+
+
+def write_documents_jsonl(documents: Iterable[Document], output_path: str | Path) -> None:
+    """Write documents in the JSONL contract used by the indexers."""
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        for document in documents:
+            handle.write(json.dumps({
+                "chunk_id": str(document.metadata.get("chunk_id") or ""),
+                "text": document.page_content,
+                "metadata": document.metadata,
+            }, ensure_ascii=False) + "\n")
 
 TIMELINE_STAGE_ORDER = {
     "T0": 0,
@@ -375,58 +390,69 @@ def _section_documents_from_text(text: str, source_path: Path) -> list[Document]
 
 def build_novel_structure_documents(
     file_path: str | Path = DEFAULT_THREE_BODY_TEXT_PATH,
+    *,
     chunk_size: int = NOVEL_CHUNK_SIZE,
     chunk_overlap: int = NOVEL_CHUNK_OVERLAP,
 ) -> list[Document]:
-    """Build chapter-aware chunks from the imported novel text."""
+    """Build novel chunks with the shared DocReader pipeline and legacy timeline tags."""
     path = Path(file_path)
-    text = path.read_text(encoding="utf-8")
-    section_docs = _section_documents_from_text(text, path)
-    splitter = RecursiveCharacterTextSplitter(
+    if path.name == DEFAULT_THREE_BODY_TEXT_PATH.name and not path.exists():
+        return []
+    documents = build_docreader_text_documents(
+        path,
+        source_id="three_body_txt_local",
+        source_order=0,
+        work="《三体》三部曲",
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
-        separators=["\n\n", "\n", "。", "；", "，", ""],
     )
-    chunks = splitter.split_documents(section_docs)
-
-    chunks = [chunk for chunk in chunks if _is_indexable_novel_chunk(chunk.page_content)]
-
-    for index, chunk in enumerate(chunks):
-        timeline_stage = _infer_timeline_stage(chunk.metadata, chunk.page_content)
-        chunk.metadata.update(
-            {
-                "chunk_id": f"novel_three_body_{timeline_stage}_{index:06d}",
-                "chunk_index": index,
-                "chunk_kind": "novel_structural_chunk",
-                "timeline_stage": timeline_stage,
-                "stage_order": TIMELINE_STAGE_ORDER[timeline_stage],
-                "global_timeline_anchor": TIMELINE_STAGE_ANCHORS[timeline_stage],
-                "character_mentions": _character_mentions(chunk.page_content),
-                "anti_future_sight_level": "high",
-            }
-        )
-    return chunks
-
-
-def document_to_json_record(document: Document) -> dict[str, Any]:
-    """Serialize a LangChain document into an index-friendly JSON record."""
-    return {
-        "chunk_id": document.metadata.get("chunk_id"),
-        "text": document.page_content,
-        "metadata": document.metadata,
-    }
-
-
-def write_documents_jsonl(documents: list[Document], output_path: str | Path) -> None:
-    """Write documents as JSONL for audit and offline indexing."""
-    path = Path(output_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as file:
-        for document in documents:
-            file.write(
-                json.dumps(document_to_json_record(document), ensure_ascii=False)
-                + "\n"
-            )
+    current_book = ""
+    current_part = ""
+    for document in documents:
+        metadata = document.metadata
+        title = str(metadata.get("section_title") or "")
+        if BOOK_HEADING_PATTERN.match(title):
+            current_book = title
+            current_part = ""
+        elif PART_HEADING_PATTERN.match(title):
+            current_part = title
+        elif CHAPTER_HEADING_PATTERN.match(title) or PROLOGUE_HEADING_PATTERN.match(title):
+            if metadata.get("part") is None:
+                current_part = ""
+        book = str(metadata.get("book") or current_book)
+        part = str(metadata.get("part") or current_part)
+        if "三体III" in book or "死神永生" in book:
+            timeline_stage = "T2" if "第一部" in part else "T5" if "第二部" in part else "T6"
+        elif "三体II" in book or "黑暗森林" in book:
+            timeline_stage = "T3" if "中部" in part else "T4" if "下部" in part else "T2"
+        else:
+            timeline_stage = "T0"
+        content = document.page_content
+        metadata.update({
+            "source_id": "three_body_txt_local",
+            "source_type": "novel_chunk",
+            "source": str(path),
+            "source_format": path.suffix.lower().lstrip("."),
+            "work": "《三体》三部曲",
+            "chunk_id": (
+                f"novel_three_body_{timeline_stage}_"
+                f"{int(metadata.get('section_index') or 0):04d}_"
+                f"{int(metadata.get('chunk_index') or 0):04d}_"
+                f"{hashlib.sha256(content.encode('utf-8')).hexdigest()[:12]}"
+            ),
+            "chunk_kind": "novel_structural_chunk",
+            "timeline_stage": timeline_stage,
+            "stage_order": TIMELINE_STAGE_ORDER[timeline_stage],
+            "global_timeline_anchor": TIMELINE_STAGE_ANCHORS[timeline_stage],
+            "character_mentions": [name for name in KNOWN_CHARACTER_NAMES if name in content],
+            "anti_future_sight_level": "strict",
+        })
+        if any(marker in content for marker in SKIP_NOVEL_CHUNK_MARKERS):
+            metadata["excluded_from_character_retrieval"] = True
+    return [
+        document for document in documents
+        if not document.metadata.get("excluded_from_character_retrieval")
+    ]
 
 
 def build_and_write_default_chunks(

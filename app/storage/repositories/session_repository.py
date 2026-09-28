@@ -1,4 +1,4 @@
-"""Conversation thread persistence for Redis and MySQL."""
+"""Conversation thread persistence for PostgreSQL and Redis."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.schemas.auth import UserOut
-from app.storage.mysql.client import mysql_connection
-from app.storage.mysql.schema import init_mysql_schema
+from app.storage.postgres.client import postgres_connection
+from app.storage.postgres.schema import init_postgres_schema
 from app.storage.redis.client import redis_client
 
 
@@ -28,9 +28,11 @@ def redis_thread_key(
     timeline_stage: str,
     mode: str,
     thread_name: str,
+    novel_id: str | None = None,
 ) -> str:
     safe_thread_name = normalize_thread_name(thread_name)
-    return f"chat:{username}:{character}:{timeline_stage}:{mode}:{safe_thread_name}"
+    scope = f":{novel_id}" if novel_id else ""
+    return f"chat:{username}{scope}:{character}:{timeline_stage}:{mode}:{safe_thread_name}"
 
 
 def get_or_create_thread(
@@ -40,10 +42,11 @@ def get_or_create_thread(
     timeline_stage: str,
     mode: str,
     thread_name: str | None = None,
+    novel_id: str | None = None,
 ) -> dict[str, Any]:
-    init_mysql_schema()
+    init_postgres_schema()
     normalized_thread_name = normalize_thread_name(thread_name)
-    with mysql_connection() as connection:
+    with postgres_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -54,8 +57,9 @@ def get_or_create_thread(
                   AND timeline_stage=%s
                   AND mode=%s
                   AND thread_name=%s
+                  AND COALESCE(novel_id, '') = COALESCE(%s, '')
                 """,
-                (user.id, character, timeline_stage, mode, normalized_thread_name),
+                (user.id, character, timeline_stage, mode, normalized_thread_name, novel_id),
             )
             thread = cursor.fetchone()
             if thread:
@@ -69,9 +73,11 @@ def get_or_create_thread(
                     character_name,
                     timeline_stage,
                     mode,
-                    thread_name
+                    thread_name,
+                    novel_id
                 )
-                VALUES (%s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING *
                 """,
                 (
                     user.id,
@@ -80,10 +86,9 @@ def get_or_create_thread(
                     timeline_stage,
                     mode,
                     normalized_thread_name,
+                    novel_id,
                 ),
             )
-            thread_id = int(cursor.lastrowid)
-            cursor.execute("SELECT * FROM chat_threads WHERE id=%s", (thread_id,))
             return cursor.fetchone()
 
 
@@ -94,8 +99,8 @@ def list_threads(
     timeline_stage: str,
     mode: str,
 ) -> list[dict[str, Any]]:
-    init_mysql_schema()
-    with mysql_connection() as connection:
+    init_postgres_schema()
+    with postgres_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -125,15 +130,15 @@ def append_message(
     content: str,
     metadata: dict[str, Any] | None = None,
 ) -> None:
-    init_mysql_schema()
+    init_postgres_schema()
     created_at = datetime.now(timezone.utc).isoformat()
     metadata_json = json.dumps(metadata or {}, ensure_ascii=False)
-    with mysql_connection() as connection:
+    with postgres_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 INSERT INTO chat_messages (thread_id, role, content, metadata)
-                VALUES (%s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s::jsonb)
                 """,
                 (thread["id"], role, content, metadata_json),
             )
@@ -164,8 +169,8 @@ def get_thread_messages(
     thread_id: int,
     limit: int = 20,
 ) -> list[dict[str, Any]]:
-    init_mysql_schema()
-    with mysql_connection() as connection:
+    init_postgres_schema()
+    with postgres_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -221,8 +226,8 @@ def delete_threads(
         return 0
 
     placeholders = ", ".join(["%s"] * len(ids))
-    init_mysql_schema()
-    with mysql_connection() as connection:
+    init_postgres_schema()
+    with postgres_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 f"""
@@ -292,4 +297,5 @@ def _redis_key_from_thread(thread: dict[str, Any]) -> str:
         timeline_stage=str(thread["timeline_stage"]),
         mode=str(thread["mode"]),
         thread_name=str(thread["thread_name"]),
+        novel_id=str(thread.get("novel_id") or "") or None,
     )

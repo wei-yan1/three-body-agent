@@ -1,4 +1,4 @@
-"""Episodic memory retrieval backed by MySQL metadata and Chroma vectors."""
+"""Episodic memory retrieval backed by PostgreSQL metadata and Chroma vectors."""
 
 from __future__ import annotations
 
@@ -17,7 +17,6 @@ from app.storage.repositories.episodic_memory_repository import (
     boost_episodic_memories,
     get_episodic_memories_by_ids,
     list_episodic_memories,
-    touch_episodic_memories,
 )
 
 
@@ -70,7 +69,7 @@ class EpisodicMemory:
         source_turn_range: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> str:
-        """Add one episodic memory to MySQL and Chroma."""
+        """Add one episodic memory to PostgreSQL and Chroma."""
         memory_id = _new_memory_id(
             username=str(user.username),
             character=character,
@@ -335,7 +334,7 @@ def _memory_vector_text(
 ) -> str:
     return "\n".join(
         [
-            f"记忆类型：episodic",
+            "记忆类型：episodic",
             f"角色：{metadata.get('character')}",
             f"时间线阶段：{metadata.get('timeline_stage')}",
             f"线程：{metadata.get('thread_name')}",
@@ -388,3 +387,4 @@ def _coerce_float(value: Any, default: float) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+

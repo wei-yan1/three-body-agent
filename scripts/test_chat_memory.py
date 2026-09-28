@@ -1,4 +1,4 @@
-"""Smoke test for Redis + MySQL chat memory persistence."""
+"""Smoke test for Redis + PostgreSQL chat memory persistence."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.schemas.auth import UserOut
-from app.storage.mysql.client import mysql_connection
-from app.storage.mysql.schema import init_mysql_schema
+from app.storage.postgres.client import postgres_connection
+from app.storage.postgres.schema import init_postgres_schema
 from app.storage.redis.client import redis_client
 from app.storage.repositories.session_repository import (
     append_message,
@@ -22,14 +22,14 @@ from app.storage.repositories.session_repository import (
 
 
 def main() -> None:
-    init_mysql_schema()
-    with mysql_connection() as connection:
+    init_postgres_schema()
+    with postgres_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 INSERT INTO users (username, password_hash, display_name)
                 VALUES (%s, %s, %s)
-                ON DUPLICATE KEY UPDATE display_name=VALUES(display_name)
+                ON CONFLICT (username) DO UPDATE SET display_name=EXCLUDED.display_name
                 """,
                 ("redis_test_user", "x", "redis_test_user"),
             )
@@ -67,7 +67,7 @@ def main() -> None:
         )
 
     recent = get_recent_messages(thread)
-    with mysql_connection() as connection:
+    with postgres_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT COUNT(*) AS total FROM chat_messages WHERE thread_id=%s",
@@ -82,7 +82,7 @@ def main() -> None:
             "redis_first": recent[0]["content"],
             "redis_last": recent[-1]["content"],
             "redis_ttl_seconds": redis_client().ttl(key),
-            "mysql_message_total": total,
+            "postgres_message_total": total,
         }
     )
 

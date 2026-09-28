@@ -1,0 +1,27 @@
+{
+  "import_id": "54a5fd53434a493abafc4005fb0c70a4",
+  "status": "completed",
+  "warnings": [
+    "duplicate_chapter_numbers:[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]"
+  ],
+  "sources": [
+    {
+      "source_id": "source_0000",
+      "file_name": "three_body.txt",
+      "original_name": "three_body.txt",
+      "path": "data\\imports\\54a5fd53434a493abafc4005fb0c70a4\\sources\\0000_three_body.txt",
+      "size_bytes": 2641819,
+      "sha256": "343effc35e6bf177496cf3d96ebd8bb627a17bcafa03cfb57031c2c9ca35eb00",
+      "order": 0,
+      "status": "completed",
+      "warnings": [],
+      "error": null,
+      "chapter_count": 144,
+      "paragraph_count": 12102,
+      "dialogue_paragraph_count": 7430,
+      "chunk_count": 721,
+      "quality_score": 0.9
+    }
+  ],
+  "chunk_count": 721
+}
