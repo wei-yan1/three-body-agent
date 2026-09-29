@@ -38,6 +38,7 @@ class CharacterChatRequest(BaseModel):
     # Backward-compatible alias for existing clients. When true, mode becomes deep.
     deep_reasoning: bool = Field(default=False, description="兼容旧客户端的深度推理开关")
     debug: bool = Field(default=False, description="返回请求 trace id，便于故障排查")
+    retry: bool = Field(default=False, description="是否为失败消息重试")
 
 
 class CharacterPeriodSpec(BaseModel):

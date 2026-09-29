@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/storyrole.css?v=period-trace-modal-2" />
+  <link rel="stylesheet" href="/static/storyrole.css?v=chat-stream-1" />
 </head>
 <body>
 <main class="app-shell">
@@ -68,7 +68,7 @@
         <div id="active-period" class="active-period hidden"></div>
         <div id="messages" class="messages"><div class="empty-conversation"><div>“</div><p>先收录小说，再建立人物档案。<br />当证据与时期准备好，对话会在这里展开。</p><small>故事尚未结束，只是暂时安静。</small></div></div>
         <div id="turn-status" class="turn-status hidden"><span><i></i><i></i><i></i></span><b id="turn-status-text">正在整理回答</b></div>
-        <form id="chat-form" class="composer disabled"><textarea id="chat-input" rows="2" maxlength="4000" placeholder="先完成小说与人物档案，再开始交谈……" disabled></textarea><div class="composer-bottom"><label>回答方式<select id="chat-mode"><option value="auto">按问题选择</option><option value="quick">快速交谈</option><option value="deep">深入分析</option></select></label><label class="web-toggle"><input id="web-mode" type="checkbox" /> 联网搜索</label><small>Enter 发送 · Shift + Enter 换行</small><button id="send-button" class="send-button" type="submit" disabled><span>发送</span><b>↗</b></button></div></form>
+        <form id="chat-form" class="composer disabled"><textarea id="chat-input" rows="2" maxlength="4000" placeholder="先完成小说与人物档案，再开始交谈……" disabled></textarea><div class="composer-bottom"><label>回答方式<select id="chat-mode"><option value="quick" selected>快速交谈</option><option value="deep">深入分析</option><option value="auto">按问题选择</option></select></label><label class="web-toggle"><input id="web-mode" type="checkbox" /> 联网搜索</label><label class="period-select-label">角色时期<select id="period-select" disabled><option value="">请先建立人物档案</option></select></label><small>Enter 发送 · Shift + Enter 换行</small><button id="send-button" class="send-button" type="submit" disabled><span>发送</span><b>↗</b></button></div></form>
       </div>
       <footer class="conversation-foot"><span>StoryRole / 人物档案系统</span><span id="trace-display">模型与流程状态会在回答后显示</span></footer>
     </section>
@@ -76,6 +76,6 @@
   <footer class="page-footer"><span>让角色留在自己的时代。</span><span>文本解析 · 女娲画像 · 有据而答</span></footer>
 </main>
 <div id="period-trace-modal" class="trace-modal hidden" role="dialog" aria-modal="true" aria-labelledby="period-trace-title"><div class="trace-backdrop" data-close-trace></div><section class="trace-dialog"><header class="trace-dialog-head"><div><small>本次保存</small><h2 id="period-trace-title">时期画像流程</h2><p id="period-trace-subtitle">按时期查看实际接口调用、Agent 和耗时。</p></div><button id="close-period-trace" class="trace-close" type="button" aria-label="关闭">×</button></header><div id="period-trace-list" class="period-trace-list"></div></section></div>
-<script src="/static/storyrole.js?v=period-trace-modal-2"></script>
+<script src="/static/storyrole.js?v=chat-stream-1"></script>
 </body>
 </html>

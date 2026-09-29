@@ -71,7 +71,7 @@ class CachedEmbeddings:
         record_model_invocation(
             trace_id=self.trace_id, operation="embedding", provider=self.provider, model=self.model,
             started_at=started_at, duration_ms=(time.perf_counter() - started) * 1000,
-            usage=usage, cost=model_cost(self.model, usage),
+            usage=usage, cost=model_cost(self.model, usage, self.provider),
             cache_hit=bool(texts) and not missing_indices,
             call_count=len(texts), remote_call_count=len(missing_indices), cache_hit_count=cache_hits,
             metadata={"count": len(texts), "cache_hits": cache_hits, "remote_count": len(missing_indices)},

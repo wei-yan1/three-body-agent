@@ -191,6 +191,18 @@ class NovelImportService:
                 continue
         return sorted(jobs, key=lambda item: item.get("created_at", ""), reverse=True)
 
+    def rename_job(self, import_id: str, *, owner_id: int, novel_name: str) -> dict[str, Any]:
+        manifest = self.get_job(import_id, owner_id=owner_id)
+        manifest["novel_name"] = novel_name
+        self._write_manifest(manifest)
+        return manifest
+
+    def delete_job(self, import_id: str, *, owner_id: int) -> None:
+        manifest = self.get_job(import_id, owner_id=owner_id)
+        if manifest["status"] not in TERMINAL_STATUSES:
+            raise ValueError("导入任务正在处理，暂时不能删除")
+        shutil.rmtree(self._job_dir(import_id), ignore_errors=True)
+
     def cancel_job(self, import_id: str, *, owner_id: int) -> dict[str, Any]:
         manifest = self.get_job(import_id, owner_id=owner_id)
         if manifest["status"] not in TERMINAL_STATUSES:
@@ -201,7 +213,11 @@ class NovelImportService:
 
     def retry_job(self, import_id: str, *, owner_id: int) -> dict[str, Any]:
         manifest = self.get_job(import_id, owner_id=owner_id)
-        if manifest["status"] not in {"failed", "cancelled"}:
+        has_failed_source = any(
+            source.get("status") == "failed"
+            for source in manifest.get("sources", [])
+        )
+        if manifest["status"] not in {"failed", "cancelled"} and not has_failed_source:
             raise ValueError("只有失败或取消的任务可以重试")
         retryable = [source for source in manifest["sources"] if source.get("status") == "failed"]
         if not retryable:

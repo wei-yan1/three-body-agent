@@ -13,7 +13,7 @@ from typing import Any, Iterable
 from langchain_core.documents import Document
 
 from app.rag.indexing.bm25_index import PersistentBM25Index
-from app.observability import record_model_invocation
+from app.observability import model_cost, record_model_invocation
 
 
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_]+|[\u4e00-\u9fff]")
@@ -165,6 +165,16 @@ class DashScopeReranker:
             record_model_invocation(
                 trace_id=self.trace_id, operation="rerank", provider="dashscope", model=self.model,
                 started_at=started_at, duration_ms=(time.perf_counter() - clock) * 1000,
+                usage={
+                    "input_tokens": sum(max(1, len(document) // 4) for document in documents),
+                    "output_tokens": 0,
+                    "total_tokens": sum(max(1, len(document) // 4) for document in documents),
+                },
+                cost=model_cost(self.model, {
+                    "input_tokens": sum(max(1, len(document) // 4) for document in documents),
+                    "output_tokens": 0,
+                    "total_tokens": sum(max(1, len(document) // 4) for document in documents),
+                }, "dashscope"),
                 metadata={"candidate_count": len(documents), "top_k": top_k},
             )
             return reranked

@@ -41,6 +41,12 @@ def _create_core(cur: Any) -> None:
         id BIGSERIAL PRIMARY KEY, thread_id BIGINT NOT NULL REFERENCES chat_threads(id) ON DELETE CASCADE,
         role VARCHAR(32) NOT NULL, content TEXT NOT NULL, metadata JSONB,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())""")
+    cur.execute("ALTER TABLE chat_threads ADD COLUMN IF NOT EXISTS character_id BIGINT")
+    cur.execute("ALTER TABLE chat_threads ADD COLUMN IF NOT EXISTS period_id BIGINT")
+    cur.execute("ALTER TABLE chat_threads DROP CONSTRAINT IF EXISTS chat_threads_user_id_novel_id_character_name_timeline_stage_mode_thread_name_key")
+    cur.execute("""CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_threads_scope
+        ON chat_threads (user_id, COALESCE(novel_id, ''), COALESCE(character_id, 0),
+                         COALESCE(period_id, 0), mode, thread_name)""")
     cur.execute("""CREATE TABLE IF NOT EXISTS episodic_memories (
         id BIGSERIAL PRIMARY KEY, memory_id VARCHAR(96) NOT NULL UNIQUE,
         user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, username VARCHAR(64) NOT NULL,
@@ -56,6 +62,14 @@ def _create_core(cur: Any) -> None:
         PRIMARY KEY (user_id, setting_key))""")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_chat_threads_user ON chat_threads(user_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_thread_created ON chat_messages(thread_id, created_at)")
+    cur.execute("""CREATE TABLE IF NOT EXISTS chat_context_checkpoints (
+        thread_id BIGINT PRIMARY KEY REFERENCES chat_threads(id) ON DELETE CASCADE,
+        covered_message_id BIGINT REFERENCES chat_messages(id) ON DELETE SET NULL,
+        summary TEXT NOT NULL,
+        degraded BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )""")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_episodic_scope ON episodic_memories(user_id, character_name, timeline_stage, mode, thread_name)")
 
 

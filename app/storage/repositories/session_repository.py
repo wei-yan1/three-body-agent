@@ -29,10 +29,14 @@ def redis_thread_key(
     mode: str,
     thread_name: str,
     novel_id: str | None = None,
+    character_id: int | None = None,
+    period_id: int | None = None,
 ) -> str:
     safe_thread_name = normalize_thread_name(thread_name)
     scope = f":{novel_id}" if novel_id else ""
-    return f"chat:{username}{scope}:{character}:{timeline_stage}:{mode}:{safe_thread_name}"
+    character_scope = f":c{character_id}" if character_id is not None else ""
+    period_scope = f":p{period_id}" if period_id is not None else ":p0"
+    return f"chat:{username}{scope}{character_scope}{period_scope}:{character}:{timeline_stage}:{mode}:{safe_thread_name}"
 
 
 def get_or_create_thread(
@@ -43,6 +47,8 @@ def get_or_create_thread(
     mode: str,
     thread_name: str | None = None,
     novel_id: str | None = None,
+    character_id: int | None = None,
+    period_id: int | None = None,
 ) -> dict[str, Any]:
     init_postgres_schema()
     normalized_thread_name = normalize_thread_name(thread_name)
@@ -58,8 +64,10 @@ def get_or_create_thread(
                   AND mode=%s
                   AND thread_name=%s
                   AND COALESCE(novel_id, '') = COALESCE(%s, '')
+                  AND COALESCE(character_id, 0) = COALESCE(%s, 0)
+                  AND COALESCE(period_id, 0) = COALESCE(%s, 0)
                 """,
-                (user.id, character, timeline_stage, mode, normalized_thread_name, novel_id),
+                (user.id, character, timeline_stage, mode, normalized_thread_name, novel_id, character_id, period_id),
             )
             thread = cursor.fetchone()
             if thread:
@@ -74,9 +82,12 @@ def get_or_create_thread(
                     timeline_stage,
                     mode,
                     thread_name,
-                    novel_id
+                    novel_id,
+                    character_id,
+                    period_id
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT DO NOTHING
                 RETURNING *
                 """,
                 (
@@ -87,7 +98,30 @@ def get_or_create_thread(
                     mode,
                     normalized_thread_name,
                     novel_id,
+                    character_id,
+                    period_id,
                 ),
+            )
+            thread = cursor.fetchone()
+            if thread:
+                return thread
+
+            # A previous schema version allowed only one thread per novel and
+            # character. Reuse that row when its newer scope columns are NULL.
+            cursor.execute(
+                """
+                SELECT *
+                FROM chat_threads
+                WHERE user_id=%s
+                  AND character_name=%s
+                  AND timeline_stage=%s
+                  AND mode=%s
+                  AND thread_name=%s
+                  AND COALESCE(novel_id, '') = COALESCE(%s, '')
+                ORDER BY id
+                LIMIT 1
+                """,
+                (user.id, character, timeline_stage, mode, normalized_thread_name, novel_id),
             )
             return cursor.fetchone()
 
@@ -160,7 +194,111 @@ def get_recent_messages(thread: dict[str, Any]) -> list[dict[str, Any]]:
     client = redis_client()
     key = _redis_key_from_thread(thread)
     raw_messages = client.lrange(key, 0, -1)
-    return [json.loads(item) for item in raw_messages]
+    messages = [json.loads(item) for item in raw_messages]
+    return [
+        message for message in messages
+        if (message.get("metadata") or {}).get("status", "completed") == "completed"
+        and str((message.get("metadata") or {}).get("count_in_context", "true")).lower() != "false"
+    ]
+
+
+def get_context_checkpoint(thread_id: int) -> dict[str, Any] | None:
+    """Return the durable history compaction checkpoint for one thread."""
+    init_postgres_schema()
+    with postgres_connection() as connection, connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT thread_id, covered_message_id, summary, degraded, updated_at "
+            "FROM chat_context_checkpoints WHERE thread_id=%s",
+            (thread_id,),
+        )
+        return cursor.fetchone()
+
+
+def get_messages_after_checkpoint(
+    thread_id: int, covered_message_id: int | None = None,
+) -> list[dict[str, Any]]:
+    """Load canonical history from PostgreSQL, oldest first."""
+    init_postgres_schema()
+    with postgres_connection() as connection, connection.cursor() as cursor:
+        if covered_message_id is None:
+            cursor.execute(
+                """SELECT id, role, content, metadata, created_at
+                   FROM chat_messages
+                   WHERE thread_id=%s
+                     AND COALESCE(metadata->>'status', 'completed') = 'completed'
+                     AND COALESCE(metadata->>'count_in_context', 'true') <> 'false'
+                   ORDER BY id ASC""",
+                (thread_id,),
+            )
+        else:
+            cursor.execute(
+                """SELECT id, role, content, metadata, created_at
+                   FROM chat_messages
+                   WHERE thread_id=%s AND id>%s
+                     AND COALESCE(metadata->>'status', 'completed') = 'completed'
+                     AND COALESCE(metadata->>'count_in_context', 'true') <> 'false'
+                   ORDER BY id ASC""",
+                (thread_id, covered_message_id),
+            )
+        rows = list(cursor.fetchall())
+    return [
+        {
+            "id": int(row["id"]),
+            "role": row["role"],
+            "content": row["content"],
+            "metadata": row.get("metadata") or {},
+            "created_at": row["created_at"].isoformat()
+            if hasattr(row["created_at"], "isoformat") else str(row["created_at"]),
+        }
+        for row in rows
+    ]
+
+
+def save_context_checkpoint(
+    *, thread_id: int, covered_message_id: int, summary: str, degraded: bool = False,
+) -> None:
+    """Upsert the newest summary boundary without deleting raw messages."""
+    init_postgres_schema()
+    with postgres_connection() as connection, connection.cursor() as cursor:
+        cursor.execute(
+            """INSERT INTO chat_context_checkpoints
+               (thread_id, covered_message_id, summary, degraded)
+               VALUES (%s, %s, %s, %s)
+               ON CONFLICT (thread_id) DO UPDATE SET
+                 covered_message_id=EXCLUDED.covered_message_id,
+                 summary=EXCLUDED.summary,
+                 degraded=EXCLUDED.degraded,
+                 updated_at=NOW()""",
+            (thread_id, covered_message_id, summary, degraded),
+        )
+
+
+def get_thread_for_scope(
+    *, user: UserOut, character: str, timeline_stage: str, mode: str,
+    thread_name: str | None, novel_id: str, character_id: int, period_id: int | None,
+) -> dict[str, Any] | None:
+    init_postgres_schema()
+    with postgres_connection() as connection, connection.cursor() as cursor:
+        cursor.execute(
+            """SELECT * FROM chat_threads
+            WHERE user_id=%s AND character_name=%s AND timeline_stage=%s AND mode=%s
+              AND thread_name=%s AND novel_id=%s
+              AND character_id=%s AND COALESCE(period_id, 0)=COALESCE(%s, 0)""",
+            (user.id, character, timeline_stage, mode, normalize_thread_name(thread_name), novel_id, character_id, period_id),
+        )
+        return cursor.fetchone()
+
+
+def get_thread_messages_for_scope(
+    *, user: UserOut, character: str, timeline_stage: str, mode: str,
+    thread_name: str | None, novel_id: str, character_id: int, period_id: int | None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    thread = get_thread_for_scope(
+        user=user, character=character, timeline_stage=timeline_stage, mode=mode,
+        thread_name=thread_name, novel_id=novel_id, character_id=character_id, period_id=period_id,
+    )
+    return get_thread_messages(user=user, thread_id=int(thread["id"]), limit=limit) if thread else []
 
 
 def get_thread_messages(
@@ -298,4 +436,6 @@ def _redis_key_from_thread(thread: dict[str, Any]) -> str:
         mode=str(thread["mode"]),
         thread_name=str(thread["thread_name"]),
         novel_id=str(thread.get("novel_id") or "") or None,
+        character_id=int(thread["character_id"]) if thread.get("character_id") is not None else None,
+        period_id=int(thread["period_id"]) if thread.get("period_id") is not None else None,
     )

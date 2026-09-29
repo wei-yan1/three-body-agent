@@ -69,3 +69,7 @@ class NovelListItem(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+
+class NovelRenameRequest(BaseModel):
+    novel_name: str = Field(min_length=1, max_length=255)
+

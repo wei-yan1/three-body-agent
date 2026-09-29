@@ -4,8 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 import logging
+import asyncio
+import json
+import time
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 
 from app.agents.a2a.registry import client
 from app.agents.orchestration.workflow import storyrole_setup_workflow
@@ -18,6 +22,7 @@ from app.storage.repositories.session_repository import (
     append_message,
     get_or_create_thread,
     get_recent_messages,
+    get_thread_messages_for_scope,
 )
 from app.services.novel_import_service import novel_import_service
 from app.services.bundled_storyrole_service import ensure_three_body_workspace
@@ -38,9 +43,57 @@ from app.storage.repositories.storyrole_repository import (
     mark_memory_candidate_persisted,
     review_memory_candidate,
 )
+from app.storage.postgres.client import postgres_connection
 
 router = APIRouter(prefix="/api/v1/storyrole", tags=["storyrole"])
 logger = logging.getLogger("storyrole")
+
+
+def _latest_chat_trace(owner_id: int) -> dict | None:
+    try:
+        with postgres_connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT trace_id,status,metadata,started_at,ended_at,duration_ms
+                FROM pipeline_runs WHERE run_type='storyrole_chat'
+                AND (metadata->>'owner_id')::bigint=%s
+                ORDER BY started_at DESC LIMIT 1""",
+                (owner_id,),
+            )
+            return cursor.fetchone()
+    except Exception:
+        return None
+
+
+def _sse(event: str, payload: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
+
+
+def _trace_progress(trace_id: str | None, owner_id: int) -> dict:
+    if not trace_id:
+        return {}
+    try:
+        with postgres_connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT step_name,status,duration_ms,started_at,ended_at
+                FROM pipeline_steps WHERE trace_id=%s ORDER BY started_at,id""",
+                (trace_id,),
+            )
+            steps = list(cursor.fetchall())
+            cursor.execute(
+                """SELECT status,duration_ms FROM pipeline_runs
+                WHERE trace_id=%s AND (metadata->>'owner_id')::bigint=%s""",
+                (trace_id, owner_id),
+            )
+            run = cursor.fetchone() or {}
+            current = next((step for step in reversed(steps) if step["status"] == "running"), None)
+            return {
+                "trace_id": trace_id,
+                "status": run.get("status", "running"),
+                "current_step": current["step_name"] if current else (steps[-1]["step_name"] if steps else None),
+                "steps": steps,
+            }
+    except Exception:
+        return {"trace_id": trace_id}
 
 
 def _finish_api_trace(result: dict, trace: TraceContext, user_id: int) -> dict:
@@ -319,8 +372,8 @@ async def chat_with_character(novel_id: str, character_id: int, payload: Charact
     thread = get_or_create_thread(
         user=user, character=str(character["canonical_name"]), timeline_stage="dynamic",
         mode="storyrole", thread_name=payload.thread_name, novel_id=novel_id,
+        character_id=character_id, period_id=payload.period_id,
     )
-    append_message(thread=thread, role="user", content=payload.message, metadata={"novel_id": novel_id, "character_id": character_id, "period_id": payload.period_id})
     trace = TraceContext(run_type="storyrole_chat", metadata={"owner_id": user.id, "novel_id": novel_id, "character_id": character_id, "mode": payload.mode})
     trace.start()
     try:
@@ -343,7 +396,10 @@ async def chat_with_character(novel_id: str, character_id: int, payload: Charact
     trace.finish()
     trace_report_value = trace_report(trace.trace_id, owner_id=user.id) or {}
     trace_run = trace_report_value.get("summary") or {}
-    append_message(thread=thread, role="assistant", content=answer["answer"], metadata={"novel_id": novel_id, "character_id": character_id})
+    # A failed request never reaches here, so only completed turns enter the
+    # durable transcript and the next model context.
+    append_message(thread=thread, role="user", content=payload.message, metadata={"novel_id": novel_id, "character_id": character_id, "period_id": payload.period_id, "retry": payload.retry, "status": "completed"})
+    append_message(thread=thread, role="assistant", content=answer["answer"], metadata={"novel_id": novel_id, "character_id": character_id, "period_id": payload.period_id})
     return {
         "novel_id": novel_id,
         "character_id": character_id,
@@ -375,6 +431,153 @@ async def chat_with_character(novel_id: str, character_id: int, payload: Charact
         "trace_steps": trace_report_value.get("steps", []),
         "trace_model_invocations": trace_report_value.get("model_invocations", []),
     }
+
+
+@router.post("/novels/{novel_id}/characters/{character_id}/chat/stream")
+async def chat_with_character_stream(
+    novel_id: str, character_id: int, payload: CharacterChatRequest,
+    user: UserOut = Depends(current_user),
+) -> StreamingResponse:
+    character = get_character(character_id=character_id, owner_id=user.id)
+    if not character or character["novel_id"] != novel_id:
+        raise HTTPException(status_code=404, detail="角色不存在")
+    profile = get_persona_profile_for_period(
+        character_id=character_id, owner_id=user.id, period_id=payload.period_id,
+    )
+    if not profile:
+        raise HTTPException(status_code=409, detail="请先完成对应时期的女娲角色分析")
+
+    from app.agents.storyrole.streaming import close_answer_stream, open_answer_stream
+
+    thread = get_or_create_thread(
+        user=user, character=str(character["canonical_name"]), timeline_stage="dynamic",
+        mode="storyrole", thread_name=payload.thread_name, novel_id=novel_id,
+        character_id=character_id, period_id=payload.period_id,
+    )
+    trace = TraceContext(run_type="storyrole_chat", metadata={
+        "owner_id": user.id, "novel_id": novel_id, "character_id": character_id,
+        "period_id": payload.period_id, "mode": payload.mode,
+    })
+    trace.start()
+    answer_stream = open_answer_stream(trace.trace_id)
+
+    async def run_chat() -> dict:
+        try:
+            answer = await client.send("character-conversation", {
+                "trace_id": trace.trace_id, "novel_id": novel_id, "owner_id": user.id,
+                "character_id": character_id, "period_id": payload.period_id,
+                "message": payload.message, "recent_messages": get_recent_messages(thread),
+                "mode": payload.mode, "deep_reasoning": payload.deep_reasoning,
+                "web_mode": payload.web_mode, "retry": payload.retry,
+                "user": user.model_dump(), "thread": thread,
+            })
+            trace.finish()
+            append_message(
+                thread=thread, role="user", content=payload.message,
+                metadata={"novel_id": novel_id, "character_id": character_id,
+                          "period_id": payload.period_id, "retry": payload.retry,
+                          "status": "completed"},
+            )
+            append_message(
+                thread=thread, role="assistant", content=answer["answer"],
+                metadata={"novel_id": novel_id, "character_id": character_id, "period_id": payload.period_id},
+            )
+            report = trace_report(trace.trace_id, owner_id=user.id) or {}
+            return {
+                **answer, "novel_id": novel_id, "character_id": character_id,
+                "character": character["canonical_name"], "thread_id": int(thread["id"]),
+                "thread_name": thread["thread_name"], "period_id": payload.period_id,
+                "trace_id": trace.trace_id,
+                "trace_summary": report.get("summary", {}),
+                "trace_agents": report.get("agents", []),
+                "trace_steps": report.get("steps", []),
+                "trace_model_invocations": report.get("model_invocations", []),
+            }
+        except asyncio.CancelledError:
+            trace.finish(status="cancelled")
+            raise
+        except Exception as error:
+            trace.finish(status="failed", error=str(error))
+            raise
+        finally:
+            close_answer_stream(trace.trace_id)
+
+    task = asyncio.create_task(run_chat())
+
+    async def events():
+        try:
+            yield _sse("start", {"trace_id": trace.trace_id, "mode": payload.mode})
+            last_signature = None
+            done_seen = False
+            last_heartbeat = asyncio.get_running_loop().time()
+            while not (task.done() and done_seen):
+                event_task = asyncio.create_task(answer_stream.get())
+                done, _ = await asyncio.wait({task, event_task}, timeout=0.35, return_when=asyncio.FIRST_COMPLETED)
+                if event_task in done:
+                    event = event_task.result()
+                    event_type = event.get("type")
+                    if event_type == "done":
+                        done_seen = True
+                    elif event_type in {"token", "reset"}:
+                        yield _sse(event_type, {"text": event.get("text", "")})
+                else:
+                    event_task.cancel()
+                    try:
+                        await event_task
+                    except asyncio.CancelledError:
+                        pass
+
+                progress = await asyncio.to_thread(_trace_progress, trace.trace_id, user.id)
+                steps = progress.get("steps") or []
+                signature = tuple((step["step_name"], step["status"]) for step in steps)
+                if signature != last_signature:
+                    last_signature = signature
+                    current = progress.get("current_step")
+                    if current:
+                        is_deep = payload.mode == "deep" or current in {
+                            "deep_question_planning", "novel_retrieval", "evidence_rerank",
+                            "evidence_analysis", "role_cognition", "consistency_review",
+                        }
+                        yield _sse("progress", {"trace_id": trace.trace_id, "step": current, "deep": is_deep, "steps": steps})
+                now = asyncio.get_running_loop().time()
+                if now - last_heartbeat >= 10:
+                    last_heartbeat = now
+                    yield _sse("heartbeat", {"trace_id": trace.trace_id})
+
+            try:
+                result = task.result()
+            except Exception as error:
+                yield _sse("error", {"message": str(error), "trace_id": trace.trace_id})
+                return
+            yield _sse("complete", result)
+        finally:
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+    return StreamingResponse(
+        events(), media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.get("/novels/{novel_id}/characters/{character_id}/chat/history")
+def chat_history(
+    novel_id: str, character_id: int, period_id: int | None = None,
+    thread_name: str = "线程1", user: UserOut = Depends(current_user),
+) -> dict:
+    character = get_character(character_id=character_id, owner_id=user.id)
+    if not character or character["novel_id"] != novel_id:
+        raise HTTPException(status_code=404, detail="角色不存在")
+    messages = get_thread_messages_for_scope(
+        user=user, character=str(character["canonical_name"]), timeline_stage="dynamic",
+        mode="storyrole", thread_name=thread_name, novel_id=novel_id,
+        character_id=character_id, period_id=period_id,
+    )
+    return {"novel_id": novel_id, "character_id": character_id, "period_id": period_id, "messages": messages}
 
 
 @router.get("/memory-candidates")

@@ -78,6 +78,18 @@ class CharacterConversationAgent:
         )
         trace.start()
         payload = {**payload, "trace_id": trace.trace_id}
+        from app.services.chat_context_compaction import prepare_history
+        prepared_history = await prepare_history(
+            thread_id=int((payload.get("thread") or {}).get("id") or 0),
+            fallback_messages=list(payload.get("recent_messages") or []),
+            trace_id=trace.trace_id,
+        ) if (payload.get("thread") or {}).get("id") else None
+        if prepared_history is not None:
+            payload = {
+                **payload,
+                "recent_messages": prepared_history.messages,
+                "history_summary": prepared_history.summary,
+            }
         owner_id = int(payload["owner_id"])
         novel_id = str(payload["novel_id"])
         character_id = int(payload["character_id"])
@@ -104,7 +116,7 @@ class CharacterConversationAgent:
                 plan = await asyncio.to_thread(QueryPlannerAgent().plan, {"message": message})
             else:
                 plan_result = await self._dispatch_timeout(
-                    a2a_client, "query-planner", {"message": message}, timeout=8.0,
+                    a2a_client, "query-planner", {"message": message, "trace_id": trace.trace_id}, timeout=8.0,
                     fallback=QueryPlannerAgent().plan({"message": message}),
                 )
                 plan, degraded = self._unwrap_fallback(plan_result)
@@ -133,7 +145,7 @@ class CharacterConversationAgent:
             if str(payload.get("web_mode") or "off") == "on":
                 web_result = await self._dispatch_timeout(
                     a2a_client, "web-search",
-                    {"query": message, "max_results": 4 if mode == "quick" else 6},
+                    {"query": message, "max_results": 4 if mode == "quick" else 6, "trace_id": trace.trace_id},
                     timeout=10.0,
                     fallback={"results": [], "degraded": True, "reason": "web_search_timeout"},
                 )
@@ -146,12 +158,14 @@ class CharacterConversationAgent:
         relationship_task = (
             self._dispatch(a2a_client, "relationship-state", {
                 "profile": profile, "character_id": character_id, "owner_id": owner_id,
+                "trace_id": trace.trace_id,
             })
             if plan.get("needs_relationship") or mode == "deep" else None
         )
         timeline_task = (
             self._dispatch(a2a_client, "timeline-guard", {
                 "plan": plan, "profile": profile, "message": message,
+                "trace_id": trace.trace_id,
             })
             if plan.get("needs_timeline_check") or mode == "deep" else None
         )
@@ -177,7 +191,7 @@ class CharacterConversationAgent:
             with trace.step("deep_question_planning"):
                 deep_plan_result = await self._dispatch_timeout(
                     a2a_client, "deep-question-planner",
-                    {"message": message, "profile": profile, "period_id": period_id, "classification": plan},
+                    {"message": message, "profile": profile, "period_id": period_id, "classification": plan, "trace_id": trace.trace_id},
                     timeout=20.0, fallback=DeepQuestionPlannerAgent._fallback(message),
                 )
             deep_plan, degraded = self._unwrap_fallback(deep_plan_result)
@@ -238,6 +252,7 @@ class CharacterConversationAgent:
             "web_evidence": web_evidence,
             "recent_messages": list(payload.get("recent_messages") or []),
             "memories": memories, "relationship": relationship, "timeline": timeline,
+            "trace_id": trace.trace_id,
         }
         context_fallback = {"context": {
                 "profile": profile, "recent_messages": list(payload.get("recent_messages") or [])[-12:],
@@ -259,7 +274,7 @@ class CharacterConversationAgent:
             with trace.step("evidence_analysis"):
                 evidence_result = await self._dispatch_timeout(
                     a2a_client, "evidence-analysis",
-                    {"message": message, "deep_plan": deep_plan, "context": context_result["context"]},
+                    {"message": message, "deep_plan": deep_plan, "context": context_result["context"], "trace_id": trace.trace_id},
                     timeout=25.0, fallback=await EvidenceAnalysisAgent().analyze({"context": context_result["context"]}),
                 )
             evidence_analysis, degraded = self._unwrap_fallback(evidence_result)
@@ -271,6 +286,7 @@ class CharacterConversationAgent:
                     {"message": message, "profile": profile, "period_id": period_id,
                      "relationship": relationship, "evidence_analysis": evidence_analysis,
                      "analysis_type": deep_plan.get("analysis_type", plan.get("intent", "mixed")),
+                     "trace_id": trace.trace_id,
                      "deep_plan": deep_plan},
                     timeout=25.0, fallback=await RoleCognitionAgent().decide({"profile": profile, "evidence_analysis": evidence_analysis}),
                 )
@@ -282,7 +298,7 @@ class CharacterConversationAgent:
             reasoning_result = await self._dispatch_timeout(
                 a2a_client, "character-reasoning",
                 {"message": message, "plan": plan, "context": context_result["context"],
-                 "deep_reasoning": False},
+                 "deep_reasoning": False, "trace_id": trace.trace_id},
                 timeout=8.0, fallback={"response_action": "自然回应并保留角色立场"},
             )
             reasoning, degraded = self._unwrap_fallback(reasoning_result)
@@ -299,12 +315,13 @@ class CharacterConversationAgent:
                 context=context_result["context"], reasoning=reasoning,
                 period_id=period_id, mode=mode, trace_id=trace.trace_id,
                 generation_state=generation_state,
+                history_summary=str(payload.get("history_summary") or ""),
             )
         if generation_state["degraded"]:
             degradations.append("answer_model_fallback")
         with trace.step("memory_decision"):
             memory_result = await self._dispatch_timeout(
-                a2a_client, "memory-decision", {"message": message, "profile": profile},
+                a2a_client, "memory-decision", {"message": message, "profile": profile, "trace_id": trace.trace_id},
                 timeout=5.0, fallback={"requires_confirmation": False, "should_save": False},
             )
         memory_decision, degraded = self._unwrap_fallback(memory_result)
@@ -316,7 +333,7 @@ class CharacterConversationAgent:
                     a2a_client, "consistency-guard",
                     {"message": message, "profile": profile, "draft_answer": answer,
                      "reasoning": reasoning, "context": context_result["context"],
-                     "timeline": timeline},
+                     "timeline": timeline, "trace_id": trace.trace_id},
                     timeout=20.0,
                     fallback={"pass": True, "score": 0.7, "violations": [], "final_answer": answer,
                               "review_skipped": True},
@@ -432,20 +449,29 @@ class CharacterConversationAgent:
         recent_messages: list[dict[str, Any]], plan: dict[str, Any] | None = None,
         context: dict[str, Any] | None = None, reasoning: dict[str, Any] | None = None,
         period_id: int | None = None, mode: str = "quick", trace_id: str | None = None,
-        generation_state: dict[str, bool] | None = None,
+        generation_state: dict[str, bool] | None = None, history_summary: str = "",
     ) -> str:
         generation_state = generation_state if generation_state is not None else {"degraded": False}
+        chunks: list[str] = []
         api_key = os.getenv("DASHSCOPE_API_KEY") or os.getenv("OPENAI_API_KEY")
         if not api_key:
-            generation_state["degraded"] = True
-            return self._fallback_reply(character_name, profile, message)
+            raise RuntimeError("聊天模型未配置 API Key")
         try:
             os.environ.setdefault("OPENAI_API_KEY", api_key)
             if os.getenv("DASHSCOPE_BASE_URL"):
                 os.environ.setdefault("OPENAI_BASE_URL", os.environ["DASHSCOPE_BASE_URL"])
             model = _chat_model()
-            context_json = json.dumps(context or {}, ensure_ascii=False)[:18000]
-            reasoning_json = json.dumps(reasoning or {}, ensure_ascii=False)[:12000]
+            # Quick chat should stay responsive; deep mode gets enough evidence
+            # to reason without sending the full retrieved document set.
+            context_limit = 10000 if mode == "quick" else 24000
+            reasoning_limit = 4000 if mode == "quick" else 10000
+            # The model supports a large context window; keep history useful
+            # without allowing it to crowd out the role evidence and profile.
+            history_budget = 16000
+            context_json = self._bounded_json(context or {}, context_limit)
+            reasoning_json = self._bounded_json(reasoning or {}, reasoning_limit)
+            history, older_messages = self._select_history(recent_messages, history_budget)
+            history_summary = history_summary or self._compress_history(older_messages)
             mode_instruction = (
                 "快速回答：自然、简洁地回应，优先保持对话感，不要展开分析过程。"
                 if mode == "quick" else
@@ -459,13 +485,9 @@ class CharacterConversationAgent:
 只使用画像、当前上下文和小说证据。证据不足时以角色口吻承认不确定，不要编造。
 保持角色的性格、目标、恐惧、语言风格、关系和反模式，不要为了讨好用户放弃核心价值观。
 内部结构化决策（不要向用户展示）：{reasoning_json}
+较早对话压缩摘要（仅作连续性参考）：{history_summary}
 可用上下文：{context_json}
 """.strip()
-            history = [
-                {"role": item.get("role"), "content": item.get("content")}
-                for item in recent_messages[-12:]
-                if item.get("role") in {"user", "assistant"} and item.get("content")
-            ]
             if history and history[-1]["role"] == "user" and history[-1]["content"] == message:
                 history = history[:-1]
             invoke_timeout = float(
@@ -474,13 +496,37 @@ class CharacterConversationAgent:
                     "55" if mode == "deep" else "25",
                 )
             )
-            result = await asyncio.wait_for(
+            prompt_messages = [
+                {"role": "system", "content": system_prompt},
+                *history,
+                {"role": "user", "content": message},
+            ]
+            started = time.perf_counter()
+            usage_metadata: dict[str, int] = {}
+            async def generate_stream() -> dict[str, Any]:
+                nonlocal usage_metadata
+                async for chunk in model.astream(prompt_messages):
+                    candidate_usage = getattr(chunk, "usage_metadata", None)
+                    if isinstance(candidate_usage, dict):
+                        usage_metadata = {
+                            key: int(value) for key, value in candidate_usage.items()
+                            if key in {"input_tokens", "output_tokens", "total_tokens", "input_token_details"}
+                            and isinstance(value, (int, float))
+                        }
+                    content = chunk.content if hasattr(chunk, "content") else chunk
+                    if isinstance(content, list):
+                        text = "".join(str(item.get("text", "")) for item in content if isinstance(item, dict))
+                    else:
+                        text = str(content or "")
+                    if text:
+                        chunks.append(text)
+                        from app.agents.storyrole.streaming import publish_answer_token
+                        publish_answer_token(trace_id, text)
+                return {"text": "".join(chunks), "usage_metadata": usage_metadata}
+
+            generation = await asyncio.wait_for(
                 observe_async_call(
-                    lambda: model.ainvoke([
-                        {"role": "system", "content": system_prompt},
-                        *history,
-                        {"role": "user", "content": message},
-                    ]),
+                    generate_stream,
                     operation="storyrole_answer_generation",
                     trace_id=trace_id,
                     model=model,
@@ -488,15 +534,104 @@ class CharacterConversationAgent:
                 ),
                 timeout=max(1.0, invoke_timeout),
             )
-            content = result.content if hasattr(result, "content") else result
-            normalized = str(content).strip()
+            normalized = str(generation.get("text") or "").strip()
             if not normalized:
-                generation_state["degraded"] = True
-                return self._fallback_reply(character_name, profile, message)
+                raise RuntimeError("聊天模型返回了空回答")
+            if mode == "deep":
+                import logging
+                logging.getLogger("storyrole.deep").info(
+                    "answer stream completed trace_id=%s output_chars=%d duration_ms=%.1f",
+                    trace_id, len(normalized), (time.perf_counter() - started) * 1000,
+                )
             return normalized
         except Exception:
             generation_state["degraded"] = True
-            return self._fallback_reply(character_name, profile, message)
+            if chunks:
+                from app.agents.storyrole.streaming import reset_answer_stream
+                reset_answer_stream(trace_id)
+            raise
+
+    @staticmethod
+    def _bounded_json(value: Any, limit: int) -> str:
+        """Serialize context within a valid JSON character budget."""
+        data = json.loads(json.dumps(value, ensure_ascii=False, default=str))
+        text = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+        if len(text) <= limit:
+            return text
+
+        # Retrieval lists are the largest and least important parts to send in
+        # full. Drop their tail first, preserving the profile and instructions.
+        if isinstance(data, dict):
+            for key in ("novel_evidence", "evidence", "web_evidence", "memories", "recent_messages"):
+                items = data.get(key)
+                if not isinstance(items, list):
+                    continue
+                while items and len(text) > limit:
+                    items.pop()
+                    text = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+                if len(text) <= limit:
+                    return text
+
+            # A single oversized field should still not create malformed JSON.
+            for key, item in list(data.items()):
+                if isinstance(item, str) and len(text) > limit:
+                    data[key] = item[: max(256, limit // 4)]
+                    text = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+                    if len(text) <= limit:
+                        return text
+
+        # Keep the payload valid even when one scalar field is unusually large.
+        return json.dumps({"truncated_context": text[: max(0, limit - 32)]}, ensure_ascii=False)
+
+    @staticmethod
+    def _compress_history(messages: list[dict[str, Any]]) -> str:
+        """Keep a small deterministic summary without spending another LLM call."""
+        if not messages:
+            return "无较早对话。"
+        lines: list[str] = []
+        for item in messages:
+            role = "用户" if item.get("role") == "user" else "角色"
+            content = " ".join(str(item.get("content") or "").split())
+            if content:
+                lines.append(f"{role}：{content[:180]}")
+        summary = "；".join(lines)
+        return summary[:3000] or "无较早对话。"
+
+    @staticmethod
+    def _estimate_tokens(value: str) -> int:
+        """Conservative token estimate for mixed Chinese and Latin text."""
+        chinese = sum("\u3400" <= char <= "\u9fff" for char in value)
+        other = len(value) - chinese
+        return max(1, chinese + (other + 3) // 4)
+
+    @classmethod
+    def _select_history(
+        cls, messages: list[dict[str, Any]], budget: int,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Select at most ten newest messages while respecting a token budget."""
+        valid = [
+            {"role": item.get("role"), "content": str(item.get("content") or "")}
+            for item in messages
+            if item.get("role") in {"user", "assistant"} and item.get("content")
+        ]
+        selected: list[dict[str, Any]] = []
+        used = 0
+        selected_indexes: set[int] = set()
+        for index in range(len(valid) - 1, -1, -1):
+            item = valid[index]
+            item_tokens = cls._estimate_tokens(item["content"]) + 4
+            if selected and (len(selected) >= 10 or used + item_tokens > budget):
+                break
+            if not selected and item_tokens > budget:
+                # Keep the newest turn usable even when it is unusually long.
+                max_chars = max(256, budget * 2)
+                item = {**item, "content": item["content"][:max_chars]}
+                item_tokens = cls._estimate_tokens(item["content"]) + 4
+            selected.insert(0, item)
+            selected_indexes.add(index)
+            used += item_tokens
+        older = [item for index, item in enumerate(valid) if index not in selected_indexes]
+        return selected, older
 
     def _search_chunks(
         self, novel_id: str, owner_id: int, query: str, character_name: str,
@@ -657,6 +792,7 @@ class CharacterConversationAgent:
         try:
             current = await self._dispatch(a2a_client, "relationship-state", {
                 "profile": {}, "character_id": character_id, "owner_id": owner_id,
+                "trace_id": payload.get("trace_id"),
             })
             state = current.get("user_relationship") or {}
             trust = float(state.get("trust", 0.5))
@@ -676,6 +812,7 @@ class CharacterConversationAgent:
             evidence.append({"source": "conversation_turn", "message": message[:120]})
             await self._dispatch(a2a_client, "relationship-update", {
                 "character_id": character_id, "novel_id": novel_id, "owner_id": owner_id,
+                "trace_id": payload.get("trace_id"),
                 "trust": max(0.0, min(1.0, trust + trust_delta)),
                 "intimacy": max(0.0, min(1.0, intimacy + intimacy_delta)),
                 "tension": max(0.0, min(1.0, float(state.get("tension", 0.0)) + tension_delta)),

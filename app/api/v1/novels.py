@@ -11,9 +11,9 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPExcepti
 
 from app.api.v1.auth import current_user
 from app.schemas.auth import UserOut
-from app.schemas.novel import NovelImportAccepted, NovelImportOut, NovelListItem, NovelSourceOut
+from app.schemas.novel import NovelImportAccepted, NovelImportOut, NovelListItem, NovelRenameRequest, NovelSourceOut
 from app.services.novel_import_service import ALLOWED_SUFFIXES, novel_import_service
-from app.storage.repositories.storyrole_repository import list_novels, upsert_novel
+from app.storage.repositories.storyrole_repository import delete_novel, get_novel, list_novels, rename_novel, upsert_novel
 
 router = APIRouter(prefix="/api/v1/novels", tags=["novels"])
 
@@ -43,6 +43,47 @@ def list_novel_library(user: UserOut = Depends(current_user)) -> list[dict]:
             "chunk_count": job.get("chunk_count", 0), "created_at": job["created_at"], "updated_at": job["updated_at"],
         })
     return sorted(result, key=lambda item: item.get("updated_at", ""), reverse=True)
+
+
+@router.patch("/{novel_id}")
+def rename_novel_item(novel_id: str, payload: NovelRenameRequest, user: UserOut = Depends(current_user)) -> dict:
+    name = payload.novel_name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="小说名称不能为空")
+    workspace = get_novel(novel_id=novel_id, owner_id=user.id)
+    try:
+        job = novel_import_service.get_job(novel_id, owner_id=user.id)
+    except FileNotFoundError:
+        job = None
+    except PermissionError as error:
+        raise HTTPException(status_code=403, detail="无权访问该小说") from error
+    if not workspace and not job:
+        raise HTTPException(status_code=404, detail="小说档案不存在")
+    if job:
+        novel_import_service.rename_job(novel_id, owner_id=user.id, novel_name=name)
+    updated = rename_novel(novel_id=novel_id, owner_id=user.id, name=name)
+    if not updated:
+        updated = upsert_novel(novel_id=novel_id, owner_id=user.id, name=name, status=(job or {}).get("stage", "ready"))
+    return {"novel_id": novel_id, "novel_name": updated["name"]}
+
+
+@router.delete("/{novel_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_novel_item(novel_id: str, user: UserOut = Depends(current_user)) -> None:
+    workspace = get_novel(novel_id=novel_id, owner_id=user.id)
+    try:
+        job = novel_import_service.get_job(novel_id, owner_id=user.id)
+    except FileNotFoundError:
+        job = None
+    except PermissionError as error:
+        raise HTTPException(status_code=403, detail="无权访问该小说") from error
+    if not workspace and not job:
+        raise HTTPException(status_code=404, detail="小说档案不存在")
+    if job:
+        try:
+            novel_import_service.delete_job(novel_id, owner_id=user.id)
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+    delete_novel(novel_id=novel_id, owner_id=user.id)
 
 
 def _to_import_out(manifest: dict) -> NovelImportOut:

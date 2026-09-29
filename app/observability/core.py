@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import time
 import uuid
@@ -12,6 +13,9 @@ from datetime import UTC, datetime
 from typing import Any, Awaitable, Callable, Iterator
 
 from app.storage.postgres.client import postgres_connection
+
+
+trace_logger = logging.getLogger("storyrole.trace")
 
 
 def sha256_text(value: str) -> str:
@@ -95,20 +99,59 @@ def model_usage_from_response(response: Any) -> dict[str, int | None]:
     }
 
 
-def model_cost(model: str, usage: dict[str, int | None]) -> float | None:
-    """Calculate cost from MODEL_PRICING_JSON without hard-coding vendor prices."""
+def _effective_provider(provider: str | None) -> str:
+    """Resolve provider names exposed by LangChain to the billing provider."""
+    value = (provider or "").strip().lower()
+    if value in {"ollama", "langchain_ollama"}:
+        return "ollama"
+    if value in {"dashscope", "aliyun", "qwen"}:
+        return "dashscope"
+    base_url = (os.getenv("OPENAI_BASE_URL") or "").lower()
+    if "deepseek.com" in base_url:
+        return "deepseek"
+    if "dashscope.aliyuncs.com" in base_url:
+        return "dashscope"
+    return value or "unknown"
+
+
+def model_cost(model: str, usage: dict[str, int | None], provider: str | None = None) -> float | None:
+    """Calculate a billed amount from provider/model pricing.
+
+    ``MODEL_PRICING_JSON`` accepts either the historical flat shape::
+
+        {"model": {"input_per_million": 1, "output_per_million": 2}}
+
+    or a provider-scoped shape::
+
+        {"deepseek": {"model": {"input_per_million": 1, ...}}}
+
+    Ollama is deliberately free. A remote model with no configured price is
+    ``None`` so the API can distinguish unknown pricing from a real zero cost.
+    """
+    selected_provider = _effective_provider(provider)
+    if selected_provider == "ollama":
+        return 0.0
     raw = os.getenv("MODEL_PRICING_JSON", "")
     if not raw:
         return None
     try:
         pricing = json.loads(raw)
-        item = pricing.get(model) or pricing.get("*")
+        provider_prices = pricing.get(selected_provider)
+        if isinstance(provider_prices, dict):
+            item = provider_prices.get(model) or provider_prices.get("*")
+        else:
+            item = pricing.get(model) or pricing.get("*")
         if not isinstance(item, dict):
             return None
         if usage.get("input_tokens") is None or usage.get("output_tokens") is None:
             return None
+        cached_tokens = usage.get("cached_tokens") or 0
+        input_price = float(item.get("input_per_million", 0))
+        cached_input_price = float(item.get("cached_input_per_million", input_price))
+        uncached_tokens = max(0, (usage.get("input_tokens") or 0) - cached_tokens)
         return round(
-            (usage.get("input_tokens", 0) or 0) / 1_000_000 * float(item.get("input_per_million", 0))
+            uncached_tokens / 1_000_000 * input_price
+            + cached_tokens / 1_000_000 * cached_input_price
             + (usage.get("output_tokens", 0) or 0) / 1_000_000 * float(item.get("output_per_million", 0)),
             8,
         )
@@ -155,6 +198,10 @@ class TraceContext:
     def step(self, name: str, *, metadata: dict[str, Any] | None = None, parent_step_id: int | None = None) -> Iterator[int | None]:
         started = time.perf_counter()
         step_id: int | None = None
+        trace_logger.info(
+            "trace step started trace_id=%s run_type=%s step=%s",
+            self.trace_id, self.run_type, name,
+        )
         try:
             try:
                 with postgres_connection() as conn, conn.cursor() as cur:
@@ -171,9 +218,17 @@ class TraceContext:
             yield step_id
         except Exception as exc:
             self._finish_step(step_id, "failed", time.perf_counter() - started, str(exc))
+            trace_logger.error(
+                "trace step finished trace_id=%s run_type=%s step=%s status=failed duration_ms=%.1f",
+                self.trace_id, self.run_type, name, (time.perf_counter() - started) * 1000,
+            )
             raise
         else:
             self._finish_step(step_id, "completed", time.perf_counter() - started, None)
+            trace_logger.info(
+                "trace step finished trace_id=%s run_type=%s step=%s status=completed duration_ms=%.1f",
+                self.trace_id, self.run_type, name, (time.perf_counter() - started) * 1000,
+            )
 
     def _finish_step(self, step_id: int | None, status: str, elapsed: float, error: str | None) -> None:
         if step_id is None:
@@ -224,11 +279,11 @@ def record_model_invocation(*, trace_id: str | None, operation: str, provider: s
 def observe_sync_call(call: Callable[[], Any], *, operation: str, trace_id: str | None = None, model: Any = None, prompt: str | None = None, provider: str | None = None) -> Any:
     started = _now(); clock = time.perf_counter()
     selected_model = _model_name(model) if model is not None else os.getenv("TEST_CHAT_MODEL", "unknown")
-    selected_provider = provider or (_provider_name(model) if model is not None else "openai-compatible")
+    selected_provider = _effective_provider(provider or (_provider_name(model) if model is not None else "openai-compatible"))
     try:
         result = call()
         usage = model_usage_from_response(result)
-        record_model_invocation(trace_id=trace_id, operation=operation, provider=selected_provider, model=selected_model, started_at=started, duration_ms=(time.perf_counter() - clock) * 1000, usage=usage, cost=model_cost(selected_model, usage), prompt_hash=sha256_text(prompt) if prompt else None)
+        record_model_invocation(trace_id=trace_id, operation=operation, provider=selected_provider, model=selected_model, started_at=started, duration_ms=(time.perf_counter() - clock) * 1000, usage=usage, cost=model_cost(selected_model, usage, selected_provider), prompt_hash=sha256_text(prompt) if prompt else None)
         return result
     except Exception as exc:
         record_model_invocation(trace_id=trace_id, operation=operation, provider=selected_provider, model=selected_model, started_at=started, duration_ms=(time.perf_counter() - clock) * 1000, status="failed", error=str(exc), prompt_hash=sha256_text(prompt) if prompt else None)
@@ -238,11 +293,11 @@ def observe_sync_call(call: Callable[[], Any], *, operation: str, trace_id: str 
 async def observe_async_call(call: Callable[[], Awaitable[Any]], *, operation: str, trace_id: str | None = None, model: Any = None, prompt: str | None = None, provider: str | None = None) -> Any:
     started = _now(); clock = time.perf_counter()
     selected_model = _model_name(model) if model is not None else os.getenv("STORYROLE_CHAT_MODEL", os.getenv("TEST_CHAT_MODEL", "unknown"))
-    selected_provider = provider or (_provider_name(model) if model is not None else "openai-compatible")
+    selected_provider = _effective_provider(provider or (_provider_name(model) if model is not None else "openai-compatible"))
     try:
         result = await call()
         usage = model_usage_from_response(result if not isinstance(result, dict) else result.get("messages", [result])[-1])
-        record_model_invocation(trace_id=trace_id, operation=operation, provider=selected_provider, model=selected_model, started_at=started, duration_ms=(time.perf_counter() - clock) * 1000, usage=usage, cost=model_cost(selected_model, usage), prompt_hash=sha256_text(prompt) if prompt else None)
+        record_model_invocation(trace_id=trace_id, operation=operation, provider=selected_provider, model=selected_model, started_at=started, duration_ms=(time.perf_counter() - clock) * 1000, usage=usage, cost=model_cost(selected_model, usage, selected_provider), prompt_hash=sha256_text(prompt) if prompt else None)
         return result
     except Exception as exc:
         record_model_invocation(trace_id=trace_id, operation=operation, provider=selected_provider, model=selected_model, started_at=started, duration_ms=(time.perf_counter() - clock) * 1000, status="failed", error=str(exc), prompt_hash=sha256_text(prompt) if prompt else None)
@@ -274,7 +329,7 @@ def usage_summary(filters: dict[str, str | None]) -> list[dict[str, Any]]:
             COALESCE(SUM(output_tokens), 0) output_tokens,
             COALESCE(SUM(cached_tokens), 0) cached_tokens,
             COALESCE(SUM(total_tokens), 0) total_tokens,
-            COALESCE(SUM(cost), 0) total_cost,
+            CASE WHEN COUNT(*) FILTER (WHERE cost IS NULL) > 0 THEN NULL ELSE SUM(cost) END total_cost,
             COUNT(*) FILTER (WHERE status='failed') errors,
             AVG(duration_ms) avg_latency_ms,
             percentile_cont(0.5) WITHIN GROUP (ORDER BY duration_ms) p50_latency_ms,
@@ -298,7 +353,7 @@ def usage_dashboard(owner_id: int, *, days: int = 14) -> dict[str, Any]:
                 COALESCE(SUM(output_tokens),0) output_tokens,
                 COALESCE(SUM(cached_tokens),0) cached_tokens,
                 COALESCE(SUM(total_tokens),0) total_tokens,
-                COALESCE(SUM(cost),0) total_cost,
+                CASE WHEN COUNT(*) FILTER (WHERE cost IS NULL) > 0 THEN NULL ELSE SUM(cost) END total_cost,
                 COALESCE(AVG(duration_ms),0) avg_latency_ms,
                 COALESCE(percentile_cont(0.5) WITHIN GROUP (ORDER BY duration_ms),0) p50_latency_ms,
                 COALESCE(percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms),0) p95_latency_ms
@@ -318,7 +373,7 @@ def usage_dashboard(owner_id: int, *, days: int = 14) -> dict[str, Any]:
             """SELECT COALESCE(agent_id, operation) agent_id, COUNT(*) calls,
                 COUNT(*) FILTER (WHERE status='failed') errors,
                 COALESCE(SUM(total_tokens),0) total_tokens,
-                COALESCE(SUM(cost),0) total_cost,
+                CASE WHEN COUNT(*) FILTER (WHERE cost IS NULL) > 0 THEN NULL ELSE SUM(cost) END total_cost,
                 COALESCE(AVG(duration_ms),0) avg_latency_ms,
                 percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms) p95_latency_ms
                 FROM model_invocations

@@ -50,6 +50,27 @@ def list_novels(*, owner_id: int) -> list[dict[str, Any]]:
         return list(cursor.fetchall())
 
 
+def rename_novel(*, novel_id: str, owner_id: int, name: str) -> dict[str, Any] | None:
+    init_postgres_schema()
+    with postgres_connection() as connection, connection.cursor() as cursor:
+        cursor.execute(
+            """UPDATE storyrole_novels SET name=%s, updated_at=NOW()
+            WHERE novel_id=%s AND owner_id=%s RETURNING *""",
+            (name, novel_id, owner_id),
+        )
+        return cursor.fetchone()
+
+
+def delete_novel(*, novel_id: str, owner_id: int) -> bool:
+    init_postgres_schema()
+    with postgres_connection() as connection, connection.cursor() as cursor:
+        cursor.execute(
+            "DELETE FROM storyrole_novels WHERE novel_id=%s AND owner_id=%s",
+            (novel_id, owner_id),
+        )
+        return cursor.rowcount > 0
+
+
 def upsert_character(
     *, novel_id: str, owner_id: int, canonical_name: str, aliases: list[str],
     mention_count: int, first_chapter: str | None, last_chapter: str | None,
