@@ -1,1 +1,0 @@
-"""Conversation model placeholder."""
