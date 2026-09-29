@@ -1,1 +1,0 @@
-"""Timeline tool placeholder."""

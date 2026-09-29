@@ -1,1 +1,0 @@
-"""Persona consistency checker placeholder."""

@@ -1,1 +1,0 @@
-"""RAG prompt placeholder."""
